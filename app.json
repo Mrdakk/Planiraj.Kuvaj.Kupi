@@ -1,17 +1,25 @@
 {
   "expo": {
-    "name": "kuhinja",
-    "slug": "kuhinja",
+    "name": "Planiraj.Kuvaj.Kupi",
+    "slug": "planiraj-kuvaj-kupi",
     "version": "1.0.0",
+    "scheme": "planirajkuvajkupi",
     "orientation": "portrait",
     "icon": "./assets/icon.png",
     "userInterfaceStyle": "light",
+    "splash": {
+      "image": "./assets/splash-icon.png",
+      "resizeMode": "contain",
+      "backgroundColor": "#F97316"
+    },
     "ios": {
-      "supportsTablet": true
+      "supportsTablet": true,
+      "bundleIdentifier": "com.pkk.planirajkuvajkupi"
     },
     "android": {
+      "package": "com.pkk.planirajkuvajkupi",
       "adaptiveIcon": {
-        "backgroundColor": "#E6F4FE",
+        "backgroundColor": "#F97316",
         "foregroundImage": "./assets/android-icon-foreground.png",
         "backgroundImage": "./assets/android-icon-background.png",
         "monochromeImage": "./assets/android-icon-monochrome.png"
@@ -20,6 +28,12 @@
     },
     "web": {
       "favicon": "./assets/favicon.png"
-    }
+    },
+    "plugins": [
+      "expo-router",
+      "expo-sqlite",
+      "expo-image",
+      "@react-native-community/datetimepicker"
+    ]
   }
 }
