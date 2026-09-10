@@ -34,6 +34,12 @@
       "expo-sqlite",
       "expo-image",
       "@react-native-community/datetimepicker"
-    ]
+    ],
+    "extra": {
+      "router": {},
+      "eas": {
+        "projectId": "9e74dcf6-0a90-4dd6-b8f8-f7ba571ddc96"
+      }
+    }
   }
 }
