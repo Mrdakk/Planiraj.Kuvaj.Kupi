@@ -17,12 +17,16 @@ export function useRecipes() {
       const recipes = await recipeRepository.findAll('name ASC');
       const missing = recipes.filter((recipe) => !normalizeRecipeEmoji(recipe.emoji));
       if (missing.length > 0) {
-        const { assignMissingRecipeEmojis } = await import('@/features/recipes/suggestEmojis');
-        void assignMissingRecipeEmojis(missing).then((changed) => {
-          if (changed) {
-            queryClient.invalidateQueries({ queryKey: queryKeys.recipes });
-          }
-        });
+        try {
+          const { assignMissingRecipeEmojis } = await import('@/features/recipes/suggestEmojis');
+          void assignMissingRecipeEmojis(missing).then((changed) => {
+            if (changed) {
+              queryClient.invalidateQueries({ queryKey: queryKeys.recipes });
+            }
+          });
+        } catch (error) {
+          console.warn('Recipe emoji assignment skipped', error);
+        }
       }
       return recipes;
     },

@@ -1,4 +1,4 @@
-import { supabase } from '@/lib/supabase';
+import { isSupabaseConfigured, requireSupabase } from '@/lib/supabase';
 import { normalizeRecipeEmoji } from '@/constants/emojis';
 import { nowISO } from '@/database/repository';
 import { ingredientRepository, recipeRepository } from '@/services/repositories';
@@ -22,7 +22,11 @@ function lookupEmoji(map: Record<string, string>, name: string): string | null {
 }
 
 async function invokeImportRecipe(body: Record<string, unknown>): Promise<unknown> {
-  const { data, error } = await supabase.functions.invoke('import-recipe', { body });
+  if (!isSupabaseConfigured) {
+    throw new Error('Groq nije dostupan bez Supabase konfiguracije.');
+  }
+
+  const { data, error } = await requireSupabase().functions.invoke('import-recipe', { body });
   if (error) {
     let message = error.message || 'Groq nije uspeo.';
     const context = (error as { context?: Response }).context;

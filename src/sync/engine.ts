@@ -1,4 +1,4 @@
-import { supabase } from '@/lib/supabase';
+import { supabase, requireSupabase } from '@/lib/supabase';
 import {
   getPendingSyncQueue,
   removeSyncQueueItem,
@@ -20,6 +20,7 @@ export interface SyncEngine {
 
 export function createSyncEngine(): SyncEngine {
   async function push(): Promise<void> {
+    if (!supabase) return;
     const queue = await getPendingSyncQueue();
     if (queue.length === 0) return;
 
@@ -29,6 +30,7 @@ export function createSyncEngine(): SyncEngine {
   }
 
   async function pull(): Promise<void> {
+    if (!supabase) return;
     await pullTable('ingredients');
     await pullTable('ingredient_aliases');
     await pullTable('recipes');
@@ -47,6 +49,12 @@ export function createSyncEngine(): SyncEngine {
     useAppStore.getState().setSyncStatus('syncing');
 
     try {
+      if (!supabase) {
+        await updateSyncState({ status: 'idle' });
+        useAppStore.getState().setSyncStatus('offline');
+        return;
+      }
+
       const { data: session } = await supabase.auth.getSession();
       if (!session.session) {
         await updateSyncState({ status: 'idle' });
@@ -72,16 +80,17 @@ export function createSyncEngine(): SyncEngine {
 }
 
 async function pushQueueItem(item: SQLiteSyncQueueRow): Promise<void> {
+  const client = requireSupabase();
   const payload = JSON.parse(item.payload) as Record<string, unknown>;
 
   try {
     if (item.operation === 'DELETE') {
-      await supabase.from(item.table_name).delete().eq('id', item.record_id);
+      await client.from(item.table_name).delete().eq('id', item.record_id);
     } else if (item.operation === 'INSERT') {
       const serverPayload = toServerPayload(item.table_name as TableName, payload);
-      await supabase.from(item.table_name).upsert(serverPayload, { onConflict: 'id' });
+      await client.from(item.table_name).upsert(serverPayload, { onConflict: 'id' });
     } else {
-      const { data: serverRow } = await supabase
+      const { data: serverRow } = await client
         .from(item.table_name)
         .select('*')
         .eq('id', item.record_id)
@@ -96,9 +105,9 @@ async function pushQueueItem(item: SQLiteSyncQueueRow): Promise<void> {
           await markLocalSynced(item.table_name as TableName, item.record_id);
           return;
         }
-        await supabase.from(item.table_name).upsert(conflict.payload, { onConflict: 'id' });
+        await client.from(item.table_name).upsert(conflict.payload, { onConflict: 'id' });
       } else {
-        await supabase.from(item.table_name).upsert(serverPayload, { onConflict: 'id' });
+        await client.from(item.table_name).upsert(serverPayload, { onConflict: 'id' });
       }
     }
 
@@ -172,7 +181,7 @@ async function markLocalSynced(tableName: TableName, recordId: string): Promise<
 }
 
 async function pullTable(tableName: TableName): Promise<void> {
-  const { data: rows, error } = await supabase.from(tableName).select('*');
+  const { data: rows, error } = await requireSupabase().from(tableName).select('*');
   if (error || !rows) {
     console.warn(`Pull failed for ${tableName}:`, error?.message);
     return;

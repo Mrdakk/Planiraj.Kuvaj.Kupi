@@ -114,6 +114,12 @@ export async function importRecipeFromUrl(url: string): Promise<ImportedRecipe> 
     throw new Error('Unesi ispravan link (http ili https).');
   }
 
+  if (!supabase) {
+    throw new Error(
+      'Uvoz iz linka nije dostupan u ovoj instalaciji. Sačuvaj recept ručno ili dodaj Supabase ključeve u EAS preview.'
+    );
+  }
+
   const { data, error } = await supabase.functions.invoke('import-recipe', {
     body: { url: trimmed },
   });
