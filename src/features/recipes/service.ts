@@ -9,10 +9,10 @@ import { canonicalIngredientName } from '@/lib/ingredientNames';
 import { generateUUID } from '@/lib/uuid';
 import { nowISO } from '@/database/repository';
 import { normalizeRecipeEmoji } from '@/constants/emojis';
+import { normalizeMealTypes } from './classification';
 import type { Ingredient, Recipe, RecipeIngredient, RecipeWithIngredients } from '@/types';
 import type { Unit } from '@/constants/units';
-import type { IngredientCategory } from '@/constants/categories';
-import { ensurePantryPresence } from '@/features/pantry/ensure';
+import type { IngredientCategory, DishType, MealType } from '@/constants/categories';
 
 export interface RecipeIngredientInput {
   id?: string;
@@ -28,7 +28,8 @@ export interface CreateRecipeInput {
   description?: string;
   baseServings: number;
   prepTimeMinutes?: number;
-  category?: string;
+  mealTypes?: MealType[];
+  dishType?: DishType | null;
   steps: string[];
   notes?: string;
   emoji?: string;
@@ -107,12 +108,24 @@ async function resolveIngredientFromInput(item: RecipeIngredientInput) {
   throw new Error('Sastojak mora imati ime');
 }
 
+function recipeClassificationFromInput(input: CreateRecipeInput): {
+  mealTypes: MealType[];
+  dishType: DishType | null;
+} {
+  const types = normalizeMealTypes(input.mealTypes ?? []);
+  return {
+    mealTypes: types.length > 0 ? types : ['Ručak'],
+    dishType: input.dishType ?? null,
+  };
+}
+
 export async function createRecipeWithIngredients(
   input: CreateRecipeInput
 ): Promise<RecipeWithIngredients> {
   const recipeId = generateUUID();
   const now = nowISO();
 
+  const classification = recipeClassificationFromInput(input);
   const recipe: Recipe = {
     id: recipeId,
     name: input.name.trim(),
@@ -120,7 +133,8 @@ export async function createRecipeWithIngredients(
     imageUri: null,
     baseServings: input.baseServings,
     prepTimeMinutes: input.prepTimeMinutes ?? null,
-    category: input.category?.trim() ?? null,
+    mealTypes: classification.mealTypes,
+    dishType: classification.dishType,
     isFavorite: false,
     steps: input.steps,
     notes: input.notes?.trim() ?? null,
@@ -145,7 +159,6 @@ export async function createRecipeWithIngredients(
       createdAt: now,
       updatedAt: now,
     });
-    await ensurePantryPresence(ingredient.ingredient.id, item.unit);
   }
 
   await recipeRepository.insert(recipe);
@@ -161,13 +174,15 @@ export async function updateRecipeWithIngredients(
   input: CreateRecipeInput
 ): Promise<RecipeWithIngredients> {
   const now = nowISO();
+  const classification = recipeClassificationFromInput(input);
   const updatedRecipe: Recipe = {
     ...recipe,
     name: input.name.trim(),
     description: input.description?.trim() ?? null,
     baseServings: input.baseServings,
     prepTimeMinutes: input.prepTimeMinutes ?? null,
-    category: input.category?.trim() ?? null,
+    mealTypes: classification.mealTypes,
+    dishType: classification.dishType,
     steps: input.steps,
     notes: input.notes?.trim() ?? null,
     emoji: normalizeRecipeEmoji(input.emoji) ?? recipe.emoji,
@@ -194,7 +209,6 @@ export async function updateRecipeWithIngredients(
       createdAt: now,
       updatedAt: now,
     });
-    await ensurePantryPresence(ingredient.ingredient.id, item.unit);
   }
 
   await recipeRepository.update(updatedRecipe);

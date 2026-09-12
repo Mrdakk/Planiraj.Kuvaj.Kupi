@@ -1,5 +1,5 @@
 import { calculate } from '@/calculations/engine';
-import { foldSearchText } from '@/features/recipes/search';
+import { recipeHasMealType } from '@/features/recipes/classification';
 import type { MealType } from '@/constants/categories';
 import type { Ingredient, Meal, PantryItem, Recipe, RecipeIngredient } from '@/types';
 
@@ -23,17 +23,8 @@ export interface MealSuggestion {
   score: number;
 }
 
-const MEAL_TYPE_NEEDLES: Record<MealType, string[]> = {
-  Doručak: ['doruč'],
-  Užina: ['užin'],
-  Ručak: ['ruč', 'glavno'],
-  Večera: ['večer', 'glavno'],
-};
-
 export function recipeMatchesMealType(recipe: Recipe, mealType: MealType): boolean {
-  const haystack = foldSearchText(recipe.category ?? '');
-  if (!haystack) return false;
-  return MEAL_TYPE_NEEDLES[mealType].some((needle) => haystack.includes(foldSearchText(needle)));
+  return recipeHasMealType(recipe, mealType);
 }
 
 function timeScore(prepTimeMinutes: number | null): number {

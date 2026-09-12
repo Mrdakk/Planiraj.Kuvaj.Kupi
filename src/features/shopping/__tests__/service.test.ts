@@ -38,8 +38,10 @@ jest.mock('@/database/repository', () => ({
 import { shoppingItemRepository, shoppingListRepository } from '@/services/repositories';
 import {
   applyAddToShopping,
+  checkedShoppingItems,
   ensureShoppingList,
   previewAddToShopping,
+  updateShoppingItemDetails,
 } from '../service';
 
 const lists = shoppingListRepository as unknown as {
@@ -213,6 +215,37 @@ describe('applyAddToShopping', () => {
       ingredientId: 'ing-tomato',
       quantity: 3,
       isManual: false,
+    });
+  });
+});
+
+describe('checkedShoppingItems', () => {
+  it('returns only checked rows in list order', () => {
+    const listed = [
+      createItem({ id: 'a', isChecked: false, name: 'Luk' }),
+      createItem({ id: 'b', isChecked: true, name: 'Paradajz' }),
+      createItem({ id: 'c', isChecked: true, name: 'So' }),
+    ];
+
+    expect(checkedShoppingItems(listed).map((item) => item.id)).toEqual(['b', 'c']);
+  });
+});
+
+describe('updateShoppingItemDetails', () => {
+  beforeEach(() => {
+    items.update.mockReset();
+    items.update.mockImplementation(async (item) => item);
+  });
+
+  it('saves a new quantity and unit on the existing row', async () => {
+    const updated = await updateShoppingItemDetails(createItem(), 4, 'kg');
+
+    expect(items.update).toHaveBeenCalledTimes(1);
+    expect(updated).toMatchObject({
+      id: 'item-1',
+      quantity: 4,
+      unit: 'kg',
+      updatedAt: '2026-09-10T12:00:00.000Z',
     });
   });
 });

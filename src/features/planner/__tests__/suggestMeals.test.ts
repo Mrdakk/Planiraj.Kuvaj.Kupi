@@ -12,7 +12,8 @@ function recipe(overrides: Partial<Recipe> = {}): Recipe {
     imageUri: null,
     baseServings: 4,
     prepTimeMinutes: 30,
-    category: 'Glavno jelo',
+    mealTypes: ['Ručak', 'Večera'],
+    dishType: 'Glavno jelo',
     isFavorite: false,
     steps: [],
     notes: null,
@@ -84,13 +85,11 @@ describe('suggestMeals Brzi', () => {
     const quick = recipe({
       id: 'rec-quick',
       name: 'Kajgana',
-      category: 'Glavno jelo',
       prepTimeMinutes: 10,
     });
     const slow = recipe({
       id: 'rec-slow',
       name: 'Losos',
-      category: 'Glavno jelo',
       prepTimeMinutes: 90,
     });
 
@@ -114,7 +113,7 @@ describe('suggestMeals Brzi', () => {
 
   it('returns at most 3 suggestions', () => {
     const recipes = Array.from({ length: 5 }, (_, i) =>
-      recipe({ id: `rec-${i}`, name: `Jelo ${i}`, category: 'Ručak', prepTimeMinutes: 20 + i })
+      recipe({ id: `rec-${i}`, name: `Jelo ${i}`, mealTypes: ['Ručak'], prepTimeMinutes: 20 + i })
     );
     const result = suggestMeals({
       mealType: 'Ručak',
@@ -131,8 +130,8 @@ describe('suggestMeals Brzi', () => {
 
 describe('suggestMeals meal type filter', () => {
   it('keeps breakfast recipes for Doručak', () => {
-    const breakfast = recipe({ id: 'rec-b', name: 'Omlet', category: 'Doručak' });
-    const dinner = recipe({ id: 'rec-d', name: 'Sendvič', category: 'Večera' });
+    const breakfast = recipe({ id: 'rec-b', name: 'Omlet', mealTypes: ['Doručak'], dishType: null });
+    const dinner = recipe({ id: 'rec-d', name: 'Sendvič', mealTypes: ['Večera'], dishType: null });
     const result = suggestMeals({
       mealType: 'Doručak',
       pace: 'brzi',
@@ -146,7 +145,7 @@ describe('suggestMeals meal type filter', () => {
   });
 
   it('falls back to all recipes when none match the meal type', () => {
-    const untitled = recipe({ id: 'rec-x', name: 'Mystery', category: null });
+    const untitled = recipe({ id: 'rec-x', name: 'Mystery', mealTypes: [], dishType: null });
     const result = suggestMeals({
       mealType: 'Užina',
       pace: 'brzi',
@@ -160,7 +159,7 @@ describe('suggestMeals meal type filter', () => {
   });
 
   it('treats Glavno jelo as both Ručak and Večera', () => {
-    const main = recipe({ id: 'rec-m', name: 'Gulaš', category: 'Glavno jelo' });
+    const main = recipe({ id: 'rec-m', name: 'Gulaš' });
     expect(
       suggestMeals({
         mealType: 'Ručak',
@@ -189,27 +188,30 @@ describe('suggestMeals meal type filter', () => {
 describe('suggestMeals Klasičan', () => {
   it('does not return the same recipe ids as Brzi when more candidates exist', () => {
     const recipes = [
-      recipe({ id: 'rec-a', name: 'A', category: 'Užina', prepTimeMinutes: 5, isFavorite: false }),
-      recipe({ id: 'rec-b', name: 'B', category: 'Užina', prepTimeMinutes: 10, isFavorite: false }),
-      recipe({ id: 'rec-c', name: 'C', category: 'Užina', prepTimeMinutes: 15, isFavorite: false }),
+      recipe({ id: 'rec-a', name: 'A', mealTypes: ['Užina'], dishType: null, prepTimeMinutes: 5, isFavorite: false }),
+      recipe({ id: 'rec-b', name: 'B', mealTypes: ['Užina'], dishType: null, prepTimeMinutes: 10, isFavorite: false }),
+      recipe({ id: 'rec-c', name: 'C', mealTypes: ['Užina'], dishType: null, prepTimeMinutes: 15, isFavorite: false }),
       recipe({
         id: 'rec-d',
         name: 'D',
-        category: 'Užina',
+        mealTypes: ['Užina'],
+        dishType: null,
         prepTimeMinutes: 80,
         isFavorite: true,
       }),
       recipe({
         id: 'rec-e',
         name: 'E',
-        category: 'Užina',
+        mealTypes: ['Užina'],
+        dishType: null,
         prepTimeMinutes: 90,
         isFavorite: true,
       }),
       recipe({
         id: 'rec-f',
         name: 'F',
-        category: 'Užina',
+        mealTypes: ['Užina'],
+        dishType: null,
         prepTimeMinutes: 100,
         isFavorite: true,
       }),
@@ -234,28 +236,31 @@ describe('suggestMeals Klasičan', () => {
 
   it('prefers a favorite that is not already on this week over one that is cooked', () => {
     const fillers = [
-      recipe({ id: 'rec-fast-1', name: 'Brzi 1', category: 'Večera', prepTimeMinutes: 5 }),
-      recipe({ id: 'rec-fast-2', name: 'Brzi 2', category: 'Večera', prepTimeMinutes: 6 }),
-      recipe({ id: 'rec-fast-3', name: 'Brzi 3', category: 'Večera', prepTimeMinutes: 7 }),
+      recipe({ id: 'rec-fast-1', name: 'Brzi 1', mealTypes: ['Večera'], dishType: null, prepTimeMinutes: 5 }),
+      recipe({ id: 'rec-fast-2', name: 'Brzi 2', mealTypes: ['Večera'], dishType: null, prepTimeMinutes: 6 }),
+      recipe({ id: 'rec-fast-3', name: 'Brzi 3', mealTypes: ['Večera'], dishType: null, prepTimeMinutes: 7 }),
     ];
     const planned = recipe({
       id: 'rec-planned',
       name: 'Planiran',
-      category: 'Večera',
+      mealTypes: ['Večera'],
+      dishType: null,
       prepTimeMinutes: 40,
       isFavorite: false,
     });
     const cooked = recipe({
       id: 'rec-cooked',
       name: 'Skuvan',
-      category: 'Večera',
+      mealTypes: ['Večera'],
+      dishType: null,
       prepTimeMinutes: 40,
       isFavorite: false,
     });
     const favorite = recipe({
       id: 'rec-fav',
       name: 'Omiljen',
-      category: 'Večera',
+      mealTypes: ['Večera'],
+      dishType: null,
       prepTimeMinutes: 40,
       isFavorite: true,
     });

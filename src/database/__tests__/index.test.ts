@@ -16,12 +16,6 @@ jest.mock('expo-sqlite', () => ({
   openDatabaseAsync: jest.fn(async () => mockDb),
 }));
 
-const seedInitialRecipes = jest.fn(async () => undefined);
-
-jest.mock('@/features/recipes/seed', () => ({
-  seedInitialRecipes: () => seedInitialRecipes(),
-}));
-
 import { closeDatabase, getDatabase } from '../index';
 
 async function withTimeout<T>(promise: Promise<T>, ms: number): Promise<T> {
@@ -40,28 +34,20 @@ async function withTimeout<T>(promise: Promise<T>, ms: number): Promise<T> {
 
 describe('getDatabase', () => {
   beforeEach(async () => {
-    seedInitialRecipes.mockReset();
-    seedInitialRecipes.mockImplementation(async () => undefined);
     await closeDatabase();
   });
 
-  it('resolves when seed also calls getDatabase', async () => {
-    seedInitialRecipes.mockImplementation(async () => {
-      await getDatabase();
-    });
-
+  it('opens the database without seeding recipes', async () => {
     const db = await withTimeout(getDatabase(), 1000);
     expect(db).toBe(mockDb);
   });
 
-  it('finishes seed before the first getDatabase caller receives the connection', async () => {
-    let seedFinished = false;
-    seedInitialRecipes.mockImplementation(async () => {
-      await getDatabase();
-      seedFinished = true;
-    });
-
-    await withTimeout(getDatabase(), 1000);
-    expect(seedFinished).toBe(true);
+  it('resolves concurrent getDatabase callers with the same connection', async () => {
+    const [first, second] = await withTimeout(
+      Promise.all([getDatabase(), getDatabase()]),
+      1000
+    );
+    expect(first).toBe(mockDb);
+    expect(second).toBe(mockDb);
   });
 });

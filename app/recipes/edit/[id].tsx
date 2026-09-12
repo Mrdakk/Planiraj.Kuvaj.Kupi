@@ -1,6 +1,6 @@
 import { useState } from 'react';
 import { StyleSheet, Text } from 'react-native';
-import { useLocalSearchParams, useRouter } from 'expo-router';
+import { Stack, useLocalSearchParams, useRouter } from 'expo-router';
 import { useQueryClient } from '@tanstack/react-query';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { colors, typography, spacing } from '@/constants/theme';
@@ -31,7 +31,8 @@ export default function EditRecipeScreen() {
         description: data.description,
         baseServings: data.baseServings,
         prepTimeMinutes: data.prepTimeMinutes,
-        category: data.category,
+        mealTypes: data.mealTypes,
+        dishType: data.dishType || null,
         steps: data.steps.split('\n').map((s) => s.trim()).filter(Boolean),
         notes: data.notes,
         ingredients: data.ingredients.map((i) => ({
@@ -46,8 +47,6 @@ export default function EditRecipeScreen() {
       await queryClient.invalidateQueries({ queryKey: queryKeys.recipe(updated.id) });
       await queryClient.invalidateQueries({ queryKey: queryKeys.recipes });
       await queryClient.invalidateQueries({ queryKey: queryKeys.ingredients });
-      await queryClient.invalidateQueries({ queryKey: queryKeys.pantryItems });
-      await queryClient.invalidateQueries({ queryKey: queryKeys.missing });
       router.replace(`/recipes/${updated.id}`);
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Greška pri čuvanju recepta');
@@ -58,7 +57,8 @@ export default function EditRecipeScreen() {
 
   if (isLoading) {
     return (
-      <SafeAreaView style={styles.container} edges={['top']}>
+      <SafeAreaView style={styles.container} edges={['bottom']}>
+        <Stack.Screen options={{ title: 'Izmeni recept' }} />
         <Text style={styles.subtitle}>Učitavanje...</Text>
       </SafeAreaView>
     );
@@ -66,15 +66,16 @@ export default function EditRecipeScreen() {
 
   if (!recipe) {
     return (
-      <SafeAreaView style={styles.container} edges={['top']}>
+      <SafeAreaView style={styles.container} edges={['bottom']}>
+        <Stack.Screen options={{ title: 'Izmeni recept' }} />
         <EmptyState title="Recept nije pronađen" message="" />
       </SafeAreaView>
     );
   }
 
   return (
-    <SafeAreaView style={styles.container} edges={['top']}>
-      <Text style={styles.title}>Izmeni recept</Text>
+    <SafeAreaView style={styles.container} edges={['bottom']}>
+      <Stack.Screen options={{ title: 'Izmeni recept' }} />
       <RecipeForm
         defaultValues={recipe}
         onSubmit={handleSubmit}
@@ -99,13 +100,6 @@ const styles = StyleSheet.create({
   container: {
     flex: 1,
     backgroundColor: colors.background,
-  },
-  title: {
-    ...typography.h1,
-    color: colors.text,
-    paddingHorizontal: spacing.lg,
-    paddingTop: spacing.lg,
-    paddingBottom: spacing.md,
   },
   subtitle: {
     ...typography.body,

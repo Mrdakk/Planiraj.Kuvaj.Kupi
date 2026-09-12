@@ -35,6 +35,14 @@
       "expo-image",
       "@react-native-community/datetimepicker",
       [
+        "expo-camera",
+        {
+          "cameraPermission": "Aplikacija koristi kameru da skenira QR kod porodice.",
+          "barcodeScannerEnabled": true,
+          "recordAudioAndroid": false
+        }
+      ],
+      [
         "expo-build-properties",
         {
           "android": {

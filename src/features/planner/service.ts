@@ -5,7 +5,7 @@ import { formatDisplayDate, formatDisplayDateFromDate, parseISODate, toISODate, 
 import type { Meal, MealPlan } from '@/types';
 import type { MealType } from '@/constants/categories';
 
-export const MEAL_TYPE_PLAN_ORDER: MealType[] = ['Doručak', 'Užina', 'Ručak', 'Večera'];
+export const MEAL_TYPE_PLAN_ORDER: MealType[] = ['Doručak', 'Užina', 'Ručak', 'Večera', 'Desert'];
 
 export function getWeekStart(date: Date): string {
   const d = new Date(date);
@@ -93,6 +93,15 @@ export function isCurrentWeek(weekStart: string, today = todayISO()): boolean {
   return weekStart === getWeekStart(parseISODate(today) ?? new Date());
 }
 
+export function shiftPlanWeek(weekStart: string, weeks: number): string {
+  return addDays(weekStart, weeks * 7);
+}
+
+export function weekScreenSubtitle(weekStart: string, today = todayISO()): string {
+  const range = formatWeekNavRange(weekStart);
+  return isCurrentWeek(weekStart, today) ? `Ova nedelja · ${range}` : range;
+}
+
 export function isPastDay(dateISO: string, today = todayISO()): boolean {
   return dateISO < today;
 }
@@ -143,7 +152,7 @@ export async function addMeal(
     mealType,
     recipeId,
     servings,
-    notes: notes?.trim() ?? null,
+    notes: notes?.trim() || null,
     isCooked: false,
     createdAt: nowISO(),
     updatedAt: nowISO(),

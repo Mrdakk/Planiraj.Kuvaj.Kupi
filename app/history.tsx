@@ -1,62 +1,56 @@
-import { FlatList, StyleSheet, Text, View } from 'react-native';
-import { Stack } from 'expo-router';
+import { FlatList, Pressable, StyleSheet, Text, View } from 'react-native';
+import { Stack, useRouter } from 'expo-router';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { colors, typography, spacing } from '@/constants/theme';
-import { useConsumptionHistory } from '@/hooks/useHistory';
-import { Card } from '@/components/ui/Card';
+import { useCookedMealHistory } from '@/hooks/useHistory';
 import { EmptyState } from '@/components/ui/EmptyState';
-import { formatAmount } from '@/lib/formatQuantity';
+import { emptyCta } from '@/components/ui/emptyCta';
 import { formatDisplayDate } from '@/lib/dates';
 
 const screenOptions = { title: 'Istorija' };
 
 export default function HistoryScreen() {
-  const { data: history, isLoading } = useConsumptionHistory();
+  const router = useRouter();
+  const { data: history, isLoading } = useCookedMealHistory();
 
   if (isLoading) {
     return (
-      <SafeAreaView style={styles.container} edges={['top']}>
+      <SafeAreaView style={styles.container} edges={['bottom']}>
         <Stack.Screen options={screenOptions} />
-        <Text style={styles.title}>Istorija</Text>
         <Text style={styles.subtitle}>Učitavanje...</Text>
       </SafeAreaView>
     );
   }
 
-  const groupedByDate = (history ?? []).reduce((acc, item) => {
-    const date = item.consumedAt.split('T')[0];
-    const list = acc.get(date) ?? [];
-    list.push(item);
-    acc.set(date, list);
-    return acc;
-  }, new Map<string, typeof history>());
-
-  const sections = Array.from(groupedByDate.entries()).sort((a, b) => b[0].localeCompare(a[0]));
+  const rows = history ?? [];
 
   return (
-    <SafeAreaView style={styles.container} edges={['top']}>
+    <SafeAreaView style={styles.container} edges={['bottom']}>
       <Stack.Screen options={screenOptions} />
-      <Text style={styles.title}>Istorija</Text>
 
-      {sections.length === 0 ? (
-        <EmptyState title="Još nema istorije" message="Označi obrok kao kuvano da pratiš potrošnju." />
+      {rows.length === 0 ? (
+        <EmptyState
+          title="Još nema istorije"
+          message="Označi obrok kao kuvano da pratiš šta si skuvao."
+          actionTitle={emptyCta.history.title}
+          onAction={() => router.push(emptyCta.history.href)}
+        />
       ) : (
         <FlatList
-          data={sections}
-          keyExtractor={([date]) => date}
+          data={rows}
+          keyExtractor={(item) => item.id}
           contentContainerStyle={styles.list}
-          renderItem={({ item: [date, items] }) => (
-            <Card style={styles.card}>
-              <Text style={styles.date}>{formatDisplayDate(date)}</Text>
-              {items?.map((item) => (
-                <View key={item.id} style={styles.row}>
-                  <Text style={styles.recipe}>{item.recipe?.name ?? 'Obrok'}</Text>
-                  <Text style={styles.detail}>
-                    {formatAmount(item.quantity, item.unit)}
-                  </Text>
-                </View>
-              ))}
-            </Card>
+          ItemSeparatorComponent={() => <View style={styles.separator} />}
+          renderItem={({ item }) => (
+            <Pressable
+              onPress={() => router.push(`/meals/${item.id}`)}
+              style={({ pressed }) => [styles.row, pressed && styles.pressed]}
+            >
+              <Text style={styles.date}>{formatDisplayDate(item.date)}</Text>
+              <Text style={styles.meal} numberOfLines={1}>
+                {item.recipeName}
+              </Text>
+            </Pressable>
           )}
         />
       )}
@@ -69,41 +63,39 @@ const styles = StyleSheet.create({
     flex: 1,
     backgroundColor: colors.background,
   },
-  title: {
-    ...typography.h1,
-    color: colors.text,
-    paddingHorizontal: spacing.lg,
-    paddingTop: spacing.lg,
-    paddingBottom: spacing.md,
-  },
   subtitle: {
     ...typography.body,
     color: colors.textSecondary,
     paddingHorizontal: spacing.lg,
   },
   list: {
-    padding: spacing.lg,
-    gap: spacing.md,
+    paddingBottom: spacing.xxxl,
   },
-  card: {
-    marginBottom: spacing.md,
-  },
-  date: {
-    ...typography.h3,
-    color: colors.text,
-    marginBottom: spacing.sm,
+  separator: {
+    height: 1,
+    backgroundColor: colors.border,
+    marginLeft: spacing.lg,
   },
   row: {
     flexDirection: 'row',
-    justifyContent: 'space-between',
-    paddingVertical: spacing.xs,
+    alignItems: 'center',
+    backgroundColor: colors.surface,
+    paddingVertical: spacing.md,
+    paddingHorizontal: spacing.lg,
+    gap: spacing.md,
   },
-  recipe: {
-    ...typography.body,
-    color: colors.text,
+  pressed: {
+    opacity: 0.7,
   },
-  detail: {
+  date: {
     ...typography.body,
     color: colors.textSecondary,
+  },
+  meal: {
+    ...typography.body,
+    color: colors.text,
+    fontWeight: '600',
+    flex: 1,
+    textAlign: 'right',
   },
 });

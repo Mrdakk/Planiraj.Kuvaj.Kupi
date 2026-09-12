@@ -1,3 +1,14 @@
+import type { MealType } from '@/constants/categories';
+import { mealTypeRank, recipeHasMealType } from './classification';
+
+export type RecipeMealType = MealType;
+
+type RecipeListItem = {
+  name: string;
+  mealTypes?: readonly MealType[];
+  dishType?: string | null;
+};
+
 export function foldSearchText(value: string): string {
   return value
     .trim()
@@ -7,21 +18,50 @@ export function foldSearchText(value: string): string {
     .replace(/\p{M}/gu, '');
 }
 
-export function recipeMatchesSearch(
-  recipe: { name: string; category?: string | null },
-  term: string
-): boolean {
+export function recipeMatchesSearch(recipe: RecipeListItem, term: string): boolean {
   const query = foldSearchText(term);
   if (!query) return true;
-  const haystack = [recipe.name, recipe.category ?? '']
+  const haystack = [
+    recipe.name,
+    recipe.dishType ?? '',
+    ...(recipe.mealTypes ?? []),
+  ]
     .map(foldSearchText)
     .join(' ');
   return haystack.includes(query);
 }
 
-export function filterRecipes<T extends { name: string; category?: string | null }>(
+export function recipeMatchesListMealType(
+  recipe: Pick<RecipeListItem, 'mealTypes'>,
+  mealType: RecipeMealType
+): boolean {
+  return recipeHasMealType(recipe, mealType);
+}
+
+export function filterRecipes<T extends RecipeListItem>(
   recipes: T[],
-  term: string
+  term: string,
+  mealType?: RecipeMealType | null
 ): T[] {
-  return recipes.filter((recipe) => recipeMatchesSearch(recipe, term));
+  return recipes.filter((recipe) => {
+    if (!recipeMatchesSearch(recipe, term)) return false;
+    if (!mealType) return true;
+    return recipeMatchesListMealType(recipe, mealType);
+  });
+}
+
+export function sortRecipesByMealType<T extends RecipeListItem>(recipes: T[]): T[] {
+  return [...recipes].sort((a, b) => {
+    const rankDiff = mealTypeRank(a) - mealTypeRank(b);
+    if (rankDiff !== 0) return rankDiff;
+    return foldSearchText(a.name).localeCompare(foldSearchText(b.name));
+  });
+}
+
+export function browseRecipes<T extends RecipeListItem>(
+  recipes: T[],
+  term: string,
+  mealType?: RecipeMealType | null
+): T[] {
+  return sortRecipesByMealType(filterRecipes(recipes, term, mealType));
 }

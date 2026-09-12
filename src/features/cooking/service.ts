@@ -226,6 +226,85 @@ export async function consumeMeal(input: ConsumeMealInput): Promise<ConsumptionL
   return logs;
 }
 
+export async function unconsumeMeal(meal: Meal): Promise<void> {
+  if (!meal.isCooked) {
+    throw new Error('Obrok nije označen kao kuvano.');
+  }
+
+  const logs = await consumptionLogRepository.findManyWhere('meal_id = ?', [meal.id]);
+  const pantryItems = await pantryItemRepository.findAll();
+  const now = nowISO();
+
+  const byIngredient = new Map<string, PantryItem[]>();
+  for (const item of pantryItems) {
+    const list = byIngredient.get(item.ingredientId) ?? [];
+    list.push({ ...item });
+    byIngredient.set(item.ingredientId, list);
+  }
+
+  const toUpdate = new Map<string, PantryItem>();
+  const toInsert: PantryItem[] = [];
+
+  for (const log of logs) {
+    const existing = byIngredient.get(log.ingredientId) ?? [];
+    const sameUnit = existing.find((item) => item.unit === log.unit);
+    if (sameUnit) {
+      const next = {
+        ...sameUnit,
+        quantity: sameUnit.quantity + log.quantity,
+        updatedAt: now,
+      };
+      existing[existing.findIndex((item) => item.id === sameUnit.id)] = next;
+      byIngredient.set(log.ingredientId, existing);
+      toUpdate.set(next.id, next);
+      continue;
+    }
+
+    let restored = false;
+    for (const item of existing) {
+      const converted = convertQuantity(log.quantity, log.unit, item.unit);
+      if (converted === null) continue;
+      const next = {
+        ...item,
+        quantity: item.quantity + converted,
+        updatedAt: now,
+      };
+      existing[existing.findIndex((row) => row.id === item.id)] = next;
+      byIngredient.set(log.ingredientId, existing);
+      toUpdate.set(next.id, next);
+      restored = true;
+      break;
+    }
+    if (restored) continue;
+
+    const created: PantryItem = {
+      id: generateUUID(),
+      ingredientId: log.ingredientId,
+      quantity: log.quantity,
+      unit: log.unit,
+      expiresAt: null,
+      notes: null,
+      createdAt: now,
+      updatedAt: now,
+    };
+    existing.push(created);
+    byIngredient.set(log.ingredientId, existing);
+    toInsert.push(created);
+  }
+
+  for (const item of toUpdate.values()) {
+    await pantryItemRepository.update(item);
+  }
+  for (const item of toInsert) {
+    await pantryItemRepository.insert(item);
+  }
+  for (const log of logs) {
+    await consumptionLogRepository.delete(log.id);
+  }
+
+  await mealRepository.update({ ...meal, isCooked: false, updatedAt: now });
+}
+
 export async function consumePartial(
   meal: Meal,
   ingredientId: string,

@@ -6,6 +6,7 @@ import { colors, typography, spacing } from '@/constants/theme';
 import { Card } from '@/components/ui/Card';
 import { ScreenHeader } from '@/components/ui/ScreenHeader';
 import { useAppStore } from '@/store/appStore';
+import { syncStatusLabel } from '@/lib/networkCopy';
 
 const menuItems = [
   { title: 'Recepti', route: '/recipes', icon: 'book-outline' as const },
@@ -18,16 +19,7 @@ export default function MoreScreen() {
   const { syncStatus, isOnline } = useAppStore();
   const router = useRouter();
 
-  const statusLabel =
-    syncStatus === 'synced'
-      ? 'Sinhronizovano'
-      : syncStatus === 'syncing'
-      ? 'Sinhronizacija u toku...'
-      : syncStatus === 'pending'
-      ? 'Čeka sinhronizaciju'
-      : syncStatus === 'offline' || !isOnline
-      ? 'Offline'
-      : 'Greška pri sinhronizaciji';
+  const statusLabel = syncStatusLabel(syncStatus, isOnline);
 
   return (
     <SafeAreaView style={styles.container} edges={['top']}>
@@ -49,7 +41,7 @@ export default function MoreScreen() {
         ))}
 
         <Card style={styles.card}>
-          <Text style={styles.statusLabel}>Backup / sync status</Text>
+          <Text style={styles.statusLabel}>Sinhronizacija porodice</Text>
           <Text style={styles.statusValue}>{statusLabel}</Text>
         </Card>
       </View>

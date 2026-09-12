@@ -10,7 +10,9 @@ import {
 } from '@/database/repository';
 import type { SQLiteDatabase, SQLiteSyncQueueRow, SyncStatus } from '@/database/types';
 import type { TableName } from '@/database/repository';
+import { getHouseholdState } from '@/features/household/state';
 import { useAppStore } from '@/store/appStore';
+import { toServerPayload } from './payload';
 
 export interface SyncEngine {
   sync(): Promise<void>;
@@ -21,16 +23,20 @@ export interface SyncEngine {
 export function createSyncEngine(): SyncEngine {
   async function push(): Promise<void> {
     if (!supabase) return;
+    const household = await getHouseholdState();
+    if (!household) return;
     const queue = await getPendingSyncQueue();
     if (queue.length === 0) return;
 
     for (const item of queue) {
-      await pushQueueItem(item);
+      await pushQueueItem(item, household.householdId);
     }
   }
 
   async function pull(): Promise<void> {
     if (!supabase) return;
+    const household = await getHouseholdState();
+    if (!household) return;
     await pullTable('ingredients');
     await pullTable('ingredient_aliases');
     await pullTable('recipes');
@@ -79,7 +85,7 @@ export function createSyncEngine(): SyncEngine {
   return { sync, push, pull };
 }
 
-async function pushQueueItem(item: SQLiteSyncQueueRow): Promise<void> {
+async function pushQueueItem(item: SQLiteSyncQueueRow, householdId: string): Promise<void> {
   const client = requireSupabase();
   const payload = JSON.parse(item.payload) as Record<string, unknown>;
 
@@ -87,7 +93,7 @@ async function pushQueueItem(item: SQLiteSyncQueueRow): Promise<void> {
     if (item.operation === 'DELETE') {
       await client.from(item.table_name).delete().eq('id', item.record_id);
     } else if (item.operation === 'INSERT') {
-      const serverPayload = toServerPayload(item.table_name as TableName, payload);
+      const serverPayload = toServerPayload(item.table_name as TableName, payload, householdId);
       await client.from(item.table_name).upsert(serverPayload, { onConflict: 'id' });
     } else {
       const { data: serverRow } = await client
@@ -96,7 +102,7 @@ async function pushQueueItem(item: SQLiteSyncQueueRow): Promise<void> {
         .eq('id', item.record_id)
         .single();
 
-      const serverPayload = toServerPayload(item.table_name as TableName, payload);
+      const serverPayload = toServerPayload(item.table_name as TableName, payload, householdId);
 
       if (serverRow) {
         const conflict = resolveConflictForQueue(item, serverPayload, serverRow as Record<string, unknown>);
@@ -117,20 +123,6 @@ async function pushQueueItem(item: SQLiteSyncQueueRow): Promise<void> {
     const message = error instanceof Error ? error.message : String(error);
     await incrementSyncQueueRetry(item.id, message);
   }
-}
-
-function toServerPayload(tableName: TableName, payload: Record<string, unknown>): Record<string, unknown> {
-  const { sync_status, ...serverPayload } = payload;
-  void sync_status;
-
-  if (tableName === 'recipes' && typeof serverPayload.steps === 'string') {
-    serverPayload.steps = JSON.parse(serverPayload.steps);
-  }
-  if (tableName === 'shopping_items' && typeof serverPayload.source_meal_ids === 'string') {
-    serverPayload.source_meal_ids = JSON.parse(serverPayload.source_meal_ids);
-  }
-
-  return serverPayload;
 }
 
 interface ConflictResult {
@@ -232,6 +224,9 @@ async function upsertLocalRow(
 
   if (tableName === 'recipes' && Array.isArray(row.steps)) {
     row.steps = JSON.stringify(row.steps);
+  }
+  if (tableName === 'recipes' && Array.isArray(row.meal_types)) {
+    row.meal_types = JSON.stringify(row.meal_types);
   }
   if (tableName === 'shopping_items' && Array.isArray(row.source_meal_ids)) {
     row.source_meal_ids = JSON.stringify(row.source_meal_ids);

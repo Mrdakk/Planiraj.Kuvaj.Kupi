@@ -55,5 +55,16 @@ export const categoryToStoreSection = (
   }
 };
 
-export const mealTypes = ['Doručak', 'Ručak', 'Večera', 'Užina'] as const;
+export const mealTypes = ['Doručak', 'Užina', 'Ručak', 'Večera', 'Desert'] as const;
 export type MealType = (typeof mealTypes)[number];
+
+export const dishTypes = ['Čorba', 'Salata', 'Glavno jelo', 'Prilog', 'Pečivo', 'Slatko'] as const;
+export type DishType = (typeof dishTypes)[number];
+
+export function isMealType(value: string): value is MealType {
+  return (mealTypes as readonly string[]).includes(value);
+}
+
+export function isDishType(value: string): value is DishType {
+  return (dishTypes as readonly string[]).includes(value);
+}

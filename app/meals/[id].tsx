@@ -25,9 +25,11 @@ import { useMeal } from '@/hooks/useMealPlans';
 import { useRecipe } from '@/hooks/useRecipes';
 import { useIngredients } from '@/hooks/useIngredients';
 import { copyMeal, moveMeal, deleteMeal, canDeleteMeal, isPastDay } from '@/features/planner/service';
-import { consumeMeal, buildConsumptionPreview } from '@/features/cooking/service';
+import { consumeMeal, buildConsumptionPreview, unconsumeMeal } from '@/features/cooking/service';
+import { buildMealCookView } from '@/features/cooking/cookView';
 import type { ConsumptionPreviewItem } from '@/features/cooking/service';
 import { formatAmount, formatQuantity, parseQuantity } from '@/lib/formatQuantity';
+import { formatServings } from '@/lib/formatServings';
 import { displayIngredientName } from '@/lib/ingredientNames';
 import { formatDisplayDate, isCreatedToday, todayISO } from '@/lib/dates';
 import { NewBadge } from '@/components/ui/NewBadge';
@@ -55,13 +57,14 @@ export default function MealDetailScreen() {
   const [targetMealType, setTargetMealType] = useState<MealType>('Ručak');
   const [busy, setBusy] = useState(false);
   const [confirmDelete, setConfirmDelete] = useState(false);
+  const [confirmUncook, setConfirmUncook] = useState(false);
   const [notice, setNotice] = useState<{ title: string; message: string } | null>(null);
 
   const ingredientById = new Map(ingredients?.map((item) => [item.id, item]) ?? []);
 
   const invalidateMealData = async (planId?: string) => {
     await Promise.all([
-      queryClient.invalidateQueries({ queryKey: ['meal', id] }),
+      queryClient.invalidateQueries({ queryKey: queryKeys.meal(id) }),
       queryClient.invalidateQueries({ queryKey: queryKeys.mealPlans }),
       queryClient.invalidateQueries({ queryKey: planId ? queryKeys.meals(planId) : queryKeys.mealPlans }),
       queryClient.invalidateQueries({ queryKey: queryKeys.pantryItems }),
@@ -230,6 +233,20 @@ export default function MealDetailScreen() {
     router.back();
   };
 
+  const confirmUncookMeal = async () => {
+    if (!meal?.isCooked || busy) return;
+    setBusy(true);
+    try {
+      await unconsumeMeal(meal);
+      setConfirmUncook(false);
+      await invalidateMealData(meal.mealPlanId);
+    } catch {
+      setConfirmUncook(false);
+    } finally {
+      setBusy(false);
+    }
+  };
+
   if (isLoading || recipeLoading) {
     return (
       <SafeAreaView style={styles.container} edges={['top']}>
@@ -246,9 +263,15 @@ export default function MealDetailScreen() {
     );
   }
 
+  const cookView = buildMealCookView(
+    meal,
+    recipe,
+    new Map((ingredients ?? []).map((item) => [item.id, item.name]))
+  );
+
   return (
-    <SafeAreaView style={styles.container} edges={['top']}>
-      <Stack.Screen options={{ title: recipe.name }} />
+    <SafeAreaView style={styles.container} edges={['bottom']}>
+      <Stack.Screen options={{ title: recipe.name, headerTitle: '' }} />
       <ScrollView contentContainerStyle={styles.scroll} showsVerticalScrollIndicator={false}>
         <View style={styles.hero}>
           <EmojiBadge emoji={getRecipeEmoji(recipe.name, recipe.emoji)} size={88} />
@@ -257,7 +280,7 @@ export default function MealDetailScreen() {
             {isCreatedToday(recipe.createdAt) ? <NewBadge /> : null}
           </View>
           <Text style={styles.subtitle}>
-            {formatDisplayDate(meal.date)} · {meal.mealType} · {meal.servings} porcije
+            {formatDisplayDate(meal.date)} · {meal.mealType} · {formatServings(meal.servings)}
           </Text>
         </View>
 
@@ -272,10 +295,86 @@ export default function MealDetailScreen() {
           </Text>
         </Card>
 
+        {cookView.ingredients.length > 0 ? (
+          <View style={styles.section}>
+            <Text style={styles.sectionTitle}>Sastojci</Text>
+            {cookView.servings !== cookView.baseServings ? (
+              <Text style={styles.sectionHint}>
+                Količine su za {formatServings(cookView.servings)} (recept je za{' '}
+                {formatServings(cookView.baseServings)}).
+              </Text>
+            ) : null}
+            {cookView.ingredients.map((item) => {
+              const ingredient = ingredientById.get(item.ingredientId);
+              return (
+                <Card key={item.id} style={styles.ingredientCard}>
+                  <View style={styles.ingredientRow}>
+                    <EmojiBadge
+                      emoji={getIngredientEmoji(
+                        item.name,
+                        ingredient?.category,
+                        ingredient?.emoji
+                      )}
+                      size={36}
+                      name={item.name}
+                    />
+                    <View style={styles.ingredientBody}>
+                      <Text style={styles.ingredientName}>{item.name}</Text>
+                      <Text style={styles.ingredientQuantity}>
+                        {formatAmount(item.quantity, item.unit)}
+                      </Text>
+                      {item.notes ? (
+                        <Text style={styles.ingredientNote}>{item.notes}</Text>
+                      ) : null}
+                    </View>
+                  </View>
+                </Card>
+              );
+            })}
+          </View>
+        ) : null}
+
+        {cookView.steps.length > 0 ? (
+          <View style={styles.section}>
+            <Text style={styles.sectionTitle}>Koraci pripreme</Text>
+            {cookView.steps.map((step, index) => (
+              <View key={index} style={styles.stepRow}>
+                <Text style={styles.stepNumber}>{index + 1}.</Text>
+                <Text style={styles.stepText}>{step}</Text>
+              </View>
+            ))}
+          </View>
+        ) : null}
+
+        {cookView.recipeNotes ? (
+          <View style={styles.section}>
+            <Text style={styles.sectionTitle}>Napomena recepta</Text>
+            <Text style={styles.stepText}>{cookView.recipeNotes}</Text>
+          </View>
+        ) : null}
+
+        {cookView.mealNotes ? (
+          <Card style={styles.card}>
+            <Text style={styles.cardTitle}>Napomena</Text>
+            <Text style={styles.cardBody}>{cookView.mealNotes}</Text>
+          </Card>
+        ) : null}
+
         <View style={styles.actions}>
-          {!meal.isCooked && (
+          {meal.isCooked ? (
+            <Button
+              title="Poništi kuvanje"
+              onPress={() => setConfirmUncook(true)}
+              variant="secondary"
+            />
+          ) : (
             <Button title="Označi kao kuvano" onPress={handleCook} />
           )}
+          <Button
+            title="Otvori recept"
+            onPress={() => router.push(`/recipes/${cookView.recipeId}`)}
+            variant="secondary"
+          />
           <Button title="Kopiraj obrok" onPress={() => openRelocate('copy')} variant="secondary" />
           <Button title="Pomeri obrok" onPress={() => openRelocate('move')} variant="secondary" />
           <Button
@@ -456,6 +555,16 @@ export default function MealDetailScreen() {
       </AppSheet>
 
       <ConfirmSheet
+        visible={confirmUncook}
+        title="Poništi kuvanje"
+        message="Zalihe se vraćaju u kuhinju. Obrok više nije označen kao kuvano."
+        confirmLabel="Poništi"
+        variant="warning"
+        onConfirm={confirmUncookMeal}
+        onCancel={() => setConfirmUncook(false)}
+      />
+
+      <ConfirmSheet
         visible={confirmDelete}
         title="Obriši obrok"
         message="Obrok nestaje iz plana. Ovo se ne može opozvati."
@@ -528,6 +637,61 @@ const styles = StyleSheet.create({
     ...typography.body,
     color: colors.textSecondary,
     marginTop: spacing.xs,
+  },
+  section: {
+    paddingHorizontal: spacing.lg,
+    marginBottom: spacing.sm,
+  },
+  sectionTitle: {
+    ...typography.h2,
+    color: colors.text,
+    marginTop: spacing.md,
+    marginBottom: spacing.md,
+  },
+  sectionHint: {
+    ...typography.bodySmall,
+    color: colors.textMuted,
+    marginTop: -spacing.sm,
+    marginBottom: spacing.md,
+  },
+  ingredientCard: {
+    marginBottom: spacing.md,
+  },
+  ingredientRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: spacing.md,
+  },
+  ingredientBody: {
+    flex: 1,
+  },
+  ingredientName: {
+    ...typography.h3,
+    color: colors.text,
+  },
+  ingredientQuantity: {
+    ...typography.body,
+    color: colors.textSecondary,
+    marginTop: spacing.xs,
+  },
+  ingredientNote: {
+    ...typography.bodySmall,
+    color: colors.textMuted,
+    marginTop: spacing.xs,
+  },
+  stepRow: {
+    flexDirection: 'row',
+    marginBottom: spacing.md,
+  },
+  stepNumber: {
+    ...typography.body,
+    color: colors.primary,
+    width: 28,
+  },
+  stepText: {
+    ...typography.body,
+    color: colors.text,
+    flex: 1,
   },
   actions: {
     padding: spacing.lg,

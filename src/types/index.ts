@@ -1,5 +1,10 @@
 import type { Unit } from '@/constants/units';
-import type { IngredientCategory, GroceryStoreSection, MealType } from '@/constants/categories';
+import type {
+  DishType,
+  IngredientCategory,
+  GroceryStoreSection,
+  MealType,
+} from '@/constants/categories';
 
 export type UUID = string;
 
@@ -12,6 +17,13 @@ export interface Profile extends Timestamps {
   id: UUID;
   email: string | null;
   displayName: string | null;
+}
+
+export interface HouseholdState extends Timestamps {
+  householdId: UUID;
+  memberId: UUID;
+  displayName: string;
+  joinToken: string;
 }
 
 export interface Ingredient extends Timestamps {
@@ -36,7 +48,8 @@ export interface Recipe extends Timestamps {
   imageUri: string | null;
   baseServings: number;
   prepTimeMinutes: number | null;
-  category: string | null;
+  mealTypes: MealType[];
+  dishType: DishType | null;
   isFavorite: boolean;
   steps: string[];
   notes: string | null;

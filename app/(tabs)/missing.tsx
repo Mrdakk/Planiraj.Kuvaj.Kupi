@@ -1,5 +1,6 @@
-import { useMemo, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { FlatList, Pressable, StyleSheet, Text, View } from 'react-native';
+import { useRouter } from 'expo-router';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import Ionicons from '@expo/vector-icons/Ionicons';
 import { useQueryClient } from '@tanstack/react-query';
@@ -10,6 +11,7 @@ import { useRecipes } from '@/hooks/useRecipes';
 import { useMealPlan } from '@/hooks/useMealPlans';
 import { useIngredients } from '@/hooks/useIngredients';
 import { EmptyState } from '@/components/ui/EmptyState';
+import { emptyCta } from '@/components/ui/emptyCta';
 import { ListRow } from '@/components/ui/ListRow';
 import { ScreenHeader } from '@/components/ui/ScreenHeader';
 import { AppSheet } from '@/components/ui/AppSheet';
@@ -17,7 +19,8 @@ import { Button } from '@/components/ui/Button';
 import { formatAmount } from '@/lib/formatQuantity';
 import { displayIngredientName } from '@/lib/ingredientNames';
 import { getIngredientEmoji } from '@/constants/emojis';
-import { getWeekStart, formatDayParts } from '@/features/planner/service';
+import { formatDayParts, weekScreenSubtitle } from '@/features/planner/service';
+import { usePlanWeek } from '@/hooks/usePlanWeek';
 import { groupMissingByDay } from '@/features/missing/groupByDay';
 import { partitionMissing } from '@/features/missing/partition';
 import {
@@ -45,6 +48,7 @@ function HeaderCheck({ state }: { state: SelectionHeaderState }) {
 }
 
 export default function MissingScreen() {
+  const router = useRouter();
   const queryClient = useQueryClient();
   const [viewMode, setViewMode] = useState<ViewMode>('by-day');
   const [selected, setSelected] = useState<Set<string>>(new Set());
@@ -54,7 +58,7 @@ export default function MissingScreen() {
     null
   );
 
-  const weekStart = getWeekStart(new Date());
+  const { weekStart } = usePlanWeek();
   const { data: plan } = useMealPlan(weekStart);
   const { data: meals } = useMeals(plan?.id);
   const { data: recipes } = useRecipes();
@@ -78,6 +82,10 @@ export default function MissingScreen() {
   );
 
   const selectedCount = selected.size;
+
+  useEffect(() => {
+    setSelected(new Set());
+  }, [weekStart]);
 
   const changeViewMode = (mode: ViewMode) => {
     setViewMode(mode);
@@ -133,7 +141,7 @@ export default function MissingScreen() {
   if (isLoading) {
     return (
       <SafeAreaView style={styles.container} edges={['top']}>
-        <ScreenHeader title="Fali" />
+        <ScreenHeader title="Fali" subtitle={weekScreenSubtitle(weekStart)} />
         <Text style={styles.loading}>Učitavanje...</Text>
       </SafeAreaView>
     );
@@ -141,7 +149,7 @@ export default function MissingScreen() {
 
   return (
     <SafeAreaView style={styles.container} edges={['top']}>
-      <ScreenHeader title="Fali" />
+      <ScreenHeader title="Fali" subtitle={weekScreenSubtitle(weekStart)} />
 
       <View style={styles.toggleRow}>
         <Pressable
@@ -167,6 +175,8 @@ export default function MissingScreen() {
           title="Imaš sve što ti treba"
           message="Dodaj obroke da vidiš šta fali."
           icon="checkmark-circle-outline"
+          actionTitle={emptyCta.missing.title}
+          onAction={() => router.push(emptyCta.missing.href)}
         />
       ) : viewMode === 'all-together' ? (
         <FlatList

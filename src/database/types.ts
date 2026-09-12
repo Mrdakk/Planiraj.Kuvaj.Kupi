@@ -31,6 +31,7 @@ export interface SQLiteRecipeRow extends SyncableRow {
   base_servings: number;
   prep_time_minutes: number | null;
   category: string | null;
+  meal_types: string;
   is_favorite: number;
   steps: string;
   notes: string | null;
@@ -114,6 +115,16 @@ export interface SQLiteSyncStateRow {
   last_synced_at: string | null;
   status: 'idle' | 'syncing' | 'error' | 'offline';
   pending_count: number;
+}
+
+export interface SQLiteHouseholdStateRow {
+  id: string;
+  household_id: string;
+  member_id: string;
+  display_name: string;
+  join_token: string;
+  created_at: string;
+  updated_at: string;
 }
 
 export type SQLiteRow =

@@ -1,6 +1,6 @@
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { StyleSheet, Text, View } from 'react-native';
-import { useLocalSearchParams, useRouter } from 'expo-router';
+import { useLocalSearchParams, useRouter, Stack } from 'expo-router';
 import { useQueryClient } from '@tanstack/react-query';
 import { Picker } from '@react-native-picker/picker';
 import { SafeAreaView } from 'react-native-safe-area-context';
@@ -10,9 +10,9 @@ import { ConfirmSheet } from '@/components/ui/ConfirmSheet';
 import { DateField } from '@/components/ui/DateField';
 import { EmptyState } from '@/components/ui/EmptyState';
 import { Input } from '@/components/ui/Input';
-import { ScreenHeader } from '@/components/ui/ScreenHeader';
 import { mealTypes, type MealType } from '@/constants/categories';
 import { addMeal, ensureMealPlan, getWeekStart } from '@/features/planner/service';
+import { defaultMealServings } from '@/features/planner/servings';
 import { useRecipe } from '@/hooks/useRecipes';
 import { queryKeys } from '@/hooks/queryKeys';
 import { parseISODate, todayISO } from '@/lib/dates';
@@ -30,7 +30,12 @@ export default function AddToPlanScreen() {
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
-  const servingsValue = servings || String(recipe?.baseServings ?? 4);
+  useEffect(() => {
+    const defaultType = recipe?.mealTypes[0];
+    if (defaultType) setMealType(defaultType);
+  }, [recipe]);
+
+  const servingsValue = servings || String(defaultMealServings(recipe?.baseServings));
 
   const handleSubmit = async () => {
     if (!recipe || !date || saving) return;
@@ -43,7 +48,7 @@ export default function AddToPlanScreen() {
         date,
         mealType,
         recipe.id,
-        Math.max(1, Number(servingsValue) || recipe.baseServings),
+        Math.max(1, Number(servingsValue) || defaultMealServings(recipe.baseServings)),
         notes
       );
       await queryClient.invalidateQueries({ queryKey: queryKeys.mealPlans });
@@ -59,8 +64,8 @@ export default function AddToPlanScreen() {
 
   if (isLoading) {
     return (
-      <SafeAreaView style={styles.container} edges={['top']}>
-        <ScreenHeader title="Dodaj u plan" />
+      <SafeAreaView style={styles.container} edges={['bottom']}>
+        <Stack.Screen options={{ title: 'Dodaj u plan' }} />
         <Text style={styles.subtitle}>Učitavanje...</Text>
       </SafeAreaView>
     );
@@ -68,17 +73,18 @@ export default function AddToPlanScreen() {
 
   if (!recipe) {
     return (
-      <SafeAreaView style={styles.container} edges={['top']}>
-        <ScreenHeader title="Dodaj u plan" />
+      <SafeAreaView style={styles.container} edges={['bottom']}>
+        <Stack.Screen options={{ title: 'Dodaj u plan' }} />
         <EmptyState title="Recept nije pronađen" message="" />
       </SafeAreaView>
     );
   }
 
   return (
-    <SafeAreaView style={styles.container} edges={['top']}>
-      <ScreenHeader title="Dodaj u plan" subtitle={recipe.name} />
+    <SafeAreaView style={styles.container} edges={['bottom']}>
+      <Stack.Screen options={{ title: 'Dodaj u plan' }} />
       <View style={styles.content}>
+        <Text style={styles.recipeName}>{recipe.name}</Text>
         <DateField label="Datum" value={date} onChange={(next) => next && setDate(next)} minimumDate={todayISO()} />
 
         <Text style={styles.label}>Tip obroka</Text>
@@ -123,6 +129,10 @@ const styles = StyleSheet.create({
   content: {
     padding: spacing.lg,
     gap: spacing.md,
+  },
+  recipeName: {
+    ...typography.h3,
+    color: colors.text,
   },
   label: {
     ...typography.bodySmall,

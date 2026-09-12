@@ -117,4 +117,36 @@ const styles = StyleSheet.create({
   chipTextMuted: {
     color: colors.textMuted,
   },
+  toggleWrap: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    gap: spacing.sm,
+  },
 });
+
+export function ChipToggleRow({
+  items,
+  selected,
+  onToggle,
+}: {
+  items: readonly string[];
+  selected: readonly string[];
+  onToggle: (item: string) => void;
+}) {
+  return (
+    <View style={styles.toggleWrap}>
+      {items.map((item) => {
+        const active = selected.includes(item);
+        return (
+          <Pressable
+            key={item}
+            onPress={() => onToggle(item)}
+            style={[styles.chip, active && styles.chipActive]}
+          >
+            <Text style={[styles.chipText, active && styles.chipTextActive]}>{item}</Text>
+          </Pressable>
+        );
+      })}
+    </View>
+  );
+}

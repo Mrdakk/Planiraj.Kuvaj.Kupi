@@ -59,7 +59,14 @@ export function ListRow({
       ) : null}
 
       {showCheck ? (
-        <Pressable onPress={onToggleCheck} style={styles.check} hitSlop={8}>
+        <Pressable
+          onPress={(event: GestureResponderEvent) => {
+            event.stopPropagation();
+            onToggleCheck?.();
+          }}
+          style={styles.check}
+          hitSlop={8}
+        >
           <Ionicons
             name={checked ? 'checkbox' : 'square-outline'}
             size={22}

@@ -1,4 +1,7 @@
 project_id = "kvrwwtznrxqgtvqodjdp"
 
+[auth]
+enable_anonymous_sign_ins = true
+
 [functions.import-recipe]
 verify_jwt = false

@@ -1,8 +1,10 @@
 -- Initial Supabase schema for Planiraj.Kuvaj.Kupi
--- All tables have RLS enabled. Users can only access their own rows.
+-- Kitchen data is shared by household. Identity is an anonymous auth user
+-- bound to a household member name. Enable Anonymous sign-ins in Auth providers.
 
--- UUID extension is already enabled in Supabase, but we keep this for portability.
 create extension if not exists "uuid-ossp";
+create schema if not exists private;
+grant usage on schema private to postgres, authenticated, service_role;
 
 -- Profiles: extends auth.users with app-specific data.
 create table if not exists public.profiles (
@@ -36,7 +38,6 @@ create policy "Users can delete own profile"
   to authenticated
   using (auth.uid() = id);
 
--- Trigger to auto-create profile on signup.
 create or replace function public.handle_new_user()
 returns trigger as $$
 begin
@@ -44,17 +45,65 @@ begin
   values (new.id, new.email, new.raw_user_meta_data->>'display_name');
   return new;
 end;
-$$ language plpgsql security definer;
+$$ language plpgsql security definer set search_path = public;
 
 create or replace trigger on_auth_user_created
   after insert on auth.users
   for each row execute function public.handle_new_user();
 
--- Canonical ingredients (global read-only + user-created).
--- Initially all ingredients are per-user. A global template system can be added later.
+create table if not exists public.households (
+  id uuid primary key default uuid_generate_v4(),
+  join_token uuid not null unique default uuid_generate_v4(),
+  created_at timestamptz not null default now(),
+  updated_at timestamptz not null default now()
+);
+
+create table if not exists public.household_members (
+  id uuid primary key default uuid_generate_v4(),
+  household_id uuid not null references public.households on delete cascade,
+  display_name text not null,
+  auth_user_id uuid not null unique references auth.users on delete cascade,
+  created_at timestamptz not null default now(),
+  updated_at timestamptz not null default now()
+);
+
+create unique index if not exists household_members_name_unique
+  on public.household_members (household_id, lower(trim(display_name)));
+
+alter table public.households enable row level security;
+alter table public.household_members enable row level security;
+
+create or replace function private.current_household_id()
+returns uuid
+language sql
+stable
+security definer
+set search_path = public
+as $$
+  select household_id
+  from public.household_members
+  where auth_user_id = auth.uid()
+  limit 1
+$$;
+
+create or replace function private.set_household_id()
+returns trigger
+language plpgsql
+security definer
+set search_path = public
+as $$
+begin
+  new.household_id := private.current_household_id();
+  if new.household_id is null then
+    raise exception 'No household for current user';
+  end if;
+  return new;
+end;
+$$;
+
 create table if not exists public.ingredients (
   id uuid primary key default uuid_generate_v4(),
-  user_id uuid not null references auth.users on delete cascade,
+  household_id uuid not null references public.households on delete cascade,
   name text not null,
   category text not null,
   default_unit text not null,
@@ -65,20 +114,17 @@ create table if not exists public.ingredients (
 
 alter table public.ingredients enable row level security;
 
-create policy "Users can manage own ingredients"
-  on public.ingredients
-  for all
-  to authenticated
-  using (auth.uid() = user_id)
-  with check (auth.uid() = user_id);
+create policy "Household members can manage ingredients"
+  on public.ingredients for all to authenticated
+  using (household_id = (select private.current_household_id()))
+  with check (household_id = (select private.current_household_id()));
 
-create unique index if not exists idx_ingredients_user_name
-  on public.ingredients(user_id, lower(name));
+create unique index if not exists idx_ingredients_household_name
+  on public.ingredients(household_id, lower(name));
 
--- Ingredient aliases for natural-language normalization.
 create table if not exists public.ingredient_aliases (
   id uuid primary key default uuid_generate_v4(),
-  user_id uuid not null references auth.users on delete cascade,
+  household_id uuid not null references public.households on delete cascade,
   ingredient_id uuid not null references public.ingredients on delete cascade,
   alias text not null,
   created_at timestamptz not null default now(),
@@ -87,23 +133,21 @@ create table if not exists public.ingredient_aliases (
 
 alter table public.ingredient_aliases enable row level security;
 
-create policy "Users can manage own ingredient aliases"
-  on public.ingredient_aliases
-  for all
-  to authenticated
-  using (auth.uid() = user_id)
-  with check (auth.uid() = user_id);
+create policy "Household members can manage ingredient aliases"
+  on public.ingredient_aliases for all to authenticated
+  using (household_id = (select private.current_household_id()))
+  with check (household_id = (select private.current_household_id()));
 
--- Recipes.
 create table if not exists public.recipes (
   id uuid primary key default uuid_generate_v4(),
-  user_id uuid not null references auth.users on delete cascade,
+  household_id uuid not null references public.households on delete cascade,
   name text not null,
   description text,
   image_uri text,
   base_servings integer not null default 4,
   prep_time_minutes integer,
   category text,
+  meal_types jsonb not null default '[]'::jsonb,
   is_favorite boolean not null default false,
   steps jsonb not null default '[]'::jsonb,
   notes text,
@@ -113,19 +157,16 @@ create table if not exists public.recipes (
 
 alter table public.recipes enable row level security;
 
-create policy "Users can manage own recipes"
-  on public.recipes
-  for all
-  to authenticated
-  using (auth.uid() = user_id)
-  with check (auth.uid() = user_id);
+create policy "Household members can manage recipes"
+  on public.recipes for all to authenticated
+  using (household_id = (select private.current_household_id()))
+  with check (household_id = (select private.current_household_id()));
 
-create index if not exists idx_recipes_user_id on public.recipes(user_id);
+create index if not exists idx_recipes_household_id on public.recipes(household_id);
 
--- Recipe ingredients.
 create table if not exists public.recipe_ingredients (
   id uuid primary key default uuid_generate_v4(),
-  user_id uuid not null references auth.users on delete cascade,
+  household_id uuid not null references public.households on delete cascade,
   recipe_id uuid not null references public.recipes on delete cascade,
   ingredient_id uuid not null references public.ingredients on delete restrict,
   quantity numeric not null,
@@ -138,39 +179,33 @@ create table if not exists public.recipe_ingredients (
 
 alter table public.recipe_ingredients enable row level security;
 
-create policy "Users can manage own recipe ingredients"
-  on public.recipe_ingredients
-  for all
-  to authenticated
-  using (auth.uid() = user_id)
-  with check (auth.uid() = user_id);
+create policy "Household members can manage recipe ingredients"
+  on public.recipe_ingredients for all to authenticated
+  using (household_id = (select private.current_household_id()))
+  with check (household_id = (select private.current_household_id()));
 
 create index if not exists idx_recipe_ingredients_recipe_id
   on public.recipe_ingredients(recipe_id);
 
--- Meal plans (weeks).
 create table if not exists public.meal_plans (
   id uuid primary key default uuid_generate_v4(),
-  user_id uuid not null references auth.users on delete cascade,
+  household_id uuid not null references public.households on delete cascade,
   week_start date not null,
   created_at timestamptz not null default now(),
   updated_at timestamptz not null default now(),
-  unique(user_id, week_start)
+  unique(household_id, week_start)
 );
 
 alter table public.meal_plans enable row level security;
 
-create policy "Users can manage own meal plans"
-  on public.meal_plans
-  for all
-  to authenticated
-  using (auth.uid() = user_id)
-  with check (auth.uid() = user_id);
+create policy "Household members can manage meal plans"
+  on public.meal_plans for all to authenticated
+  using (household_id = (select private.current_household_id()))
+  with check (household_id = (select private.current_household_id()));
 
--- Meals.
 create table if not exists public.meals (
   id uuid primary key default uuid_generate_v4(),
-  user_id uuid not null references auth.users on delete cascade,
+  household_id uuid not null references public.households on delete cascade,
   meal_plan_id uuid not null references public.meal_plans on delete cascade,
   date date not null,
   meal_type text not null,
@@ -184,19 +219,16 @@ create table if not exists public.meals (
 
 alter table public.meals enable row level security;
 
-create policy "Users can manage own meals"
-  on public.meals
-  for all
-  to authenticated
-  using (auth.uid() = user_id)
-  with check (auth.uid() = user_id);
+create policy "Household members can manage meals"
+  on public.meals for all to authenticated
+  using (household_id = (select private.current_household_id()))
+  with check (household_id = (select private.current_household_id()));
 
 create index if not exists idx_meals_plan_date on public.meals(meal_plan_id, date);
 
--- Pantry items.
 create table if not exists public.pantry_items (
   id uuid primary key default uuid_generate_v4(),
-  user_id uuid not null references auth.users on delete cascade,
+  household_id uuid not null references public.households on delete cascade,
   ingredient_id uuid not null references public.ingredients on delete restrict,
   quantity numeric not null,
   unit text not null,
@@ -208,20 +240,17 @@ create table if not exists public.pantry_items (
 
 alter table public.pantry_items enable row level security;
 
-create policy "Users can manage own pantry items"
-  on public.pantry_items
-  for all
-  to authenticated
-  using (auth.uid() = user_id)
-  with check (auth.uid() = user_id);
+create policy "Household members can manage pantry items"
+  on public.pantry_items for all to authenticated
+  using (household_id = (select private.current_household_id()))
+  with check (household_id = (select private.current_household_id()));
 
-create index if not exists idx_pantry_items_user_ingredient
-  on public.pantry_items(user_id, ingredient_id);
+create index if not exists idx_pantry_items_household_ingredient
+  on public.pantry_items(household_id, ingredient_id);
 
--- Shopping lists.
 create table if not exists public.shopping_lists (
   id uuid primary key default uuid_generate_v4(),
-  user_id uuid not null references auth.users on delete cascade,
+  household_id uuid not null references public.households on delete cascade,
   week_start date,
   name text,
   created_at timestamptz not null default now(),
@@ -230,17 +259,14 @@ create table if not exists public.shopping_lists (
 
 alter table public.shopping_lists enable row level security;
 
-create policy "Users can manage own shopping lists"
-  on public.shopping_lists
-  for all
-  to authenticated
-  using (auth.uid() = user_id)
-  with check (auth.uid() = user_id);
+create policy "Household members can manage shopping lists"
+  on public.shopping_lists for all to authenticated
+  using (household_id = (select private.current_household_id()))
+  with check (household_id = (select private.current_household_id()));
 
--- Shopping items.
 create table if not exists public.shopping_items (
   id uuid primary key default uuid_generate_v4(),
-  user_id uuid not null references auth.users on delete cascade,
+  household_id uuid not null references public.households on delete cascade,
   shopping_list_id uuid not null references public.shopping_lists on delete cascade,
   ingredient_id uuid references public.ingredients on delete set null,
   name text not null,
@@ -257,20 +283,17 @@ create table if not exists public.shopping_items (
 
 alter table public.shopping_items enable row level security;
 
-create policy "Users can manage own shopping items"
-  on public.shopping_items
-  for all
-  to authenticated
-  using (auth.uid() = user_id)
-  with check (auth.uid() = user_id);
+create policy "Household members can manage shopping items"
+  on public.shopping_items for all to authenticated
+  using (household_id = (select private.current_household_id()))
+  with check (household_id = (select private.current_household_id()));
 
 create index if not exists idx_shopping_items_list_id
   on public.shopping_items(shopping_list_id);
 
--- Consumption logs.
 create table if not exists public.consumption_logs (
   id uuid primary key default uuid_generate_v4(),
-  user_id uuid not null references auth.users on delete cascade,
+  household_id uuid not null references public.households on delete cascade,
   meal_id uuid not null references public.meals on delete cascade,
   ingredient_id uuid not null references public.ingredients on delete restrict,
   quantity numeric not null,
@@ -282,63 +305,53 @@ create table if not exists public.consumption_logs (
 
 alter table public.consumption_logs enable row level security;
 
-create policy "Users can manage own consumption logs"
-  on public.consumption_logs
-  for all
-  to authenticated
-  using (auth.uid() = user_id)
-  with check (auth.uid() = user_id);
+create policy "Household members can manage consumption logs"
+  on public.consumption_logs for all to authenticated
+  using (household_id = (select private.current_household_id()))
+  with check (household_id = (select private.current_household_id()));
 
--- Favorites.
 create table if not exists public.favorites (
   id uuid primary key default uuid_generate_v4(),
-  user_id uuid not null references auth.users on delete cascade,
+  household_id uuid not null references public.households on delete cascade,
   recipe_id uuid not null references public.recipes on delete cascade,
   created_at timestamptz not null default now(),
   updated_at timestamptz not null default now(),
-  unique(user_id, recipe_id)
+  unique(household_id, recipe_id)
 );
 
 alter table public.favorites enable row level security;
 
-create policy "Users can manage own favorites"
-  on public.favorites
-  for all
-  to authenticated
-  using (auth.uid() = user_id)
-  with check (auth.uid() = user_id);
+create policy "Household members can manage favorites"
+  on public.favorites for all to authenticated
+  using (household_id = (select private.current_household_id()))
+  with check (household_id = (select private.current_household_id()));
 
--- Helper function to automatically set user_id on insert (optional, for convenience).
-create or replace function public.set_user_id()
-returns trigger as $$
-begin
-  new.user_id := auth.uid();
-  return new;
-end;
-$$ language plpgsql security definer;
+create policy "Members can view own household"
+  on public.households for select to authenticated
+  using (id = (select private.current_household_id()));
 
--- Generic updated_at trigger.
+create policy "Members can view household members"
+  on public.household_members for select to authenticated
+  using (household_id = (select private.current_household_id()));
+
 create or replace function public.set_updated_at()
 returns trigger as $$
 begin
   new.updated_at := now();
   return new;
 end;
-$$ language plpgsql security definer;
+$$ language plpgsql security definer set search_path = public;
 
--- Apply updated_at triggers to all tables with updated_at column.
 do $$
 declare
   tbl text;
 begin
   for tbl in
-    select tablename from pg_tables
-    where schemaname = 'public'
-      and tablename in (
-        'profiles', 'ingredients', 'ingredient_aliases', 'recipes',
-        'recipe_ingredients', 'meal_plans', 'meals', 'pantry_items',
-        'shopping_lists', 'shopping_items', 'consumption_logs', 'favorites'
-      )
+    select unnest(array[
+      'households', 'household_members', 'profiles', 'ingredients', 'ingredient_aliases',
+      'recipes', 'recipe_ingredients', 'meal_plans', 'meals', 'pantry_items',
+      'shopping_lists', 'shopping_items', 'consumption_logs', 'favorites'
+    ])
   loop
     execute format(
       'create or replace trigger set_updated_at_%I
@@ -347,29 +360,187 @@ begin
       tbl, tbl
     );
   end loop;
-end;
-$$;
 
--- Apply set_user_id triggers to all tables with user_id column (except profiles).
-do $$
-declare
-  tbl text;
-begin
   for tbl in
-    select tablename from pg_tables
-    where schemaname = 'public'
-      and tablename in (
-        'ingredients', 'ingredient_aliases', 'recipes', 'recipe_ingredients',
-        'meal_plans', 'meals', 'pantry_items', 'shopping_lists', 'shopping_items',
-        'consumption_logs', 'favorites'
-      )
+    select unnest(array[
+      'ingredients', 'ingredient_aliases', 'recipes', 'recipe_ingredients',
+      'meal_plans', 'meals', 'pantry_items', 'shopping_lists', 'shopping_items',
+      'consumption_logs', 'favorites'
+    ])
   loop
     execute format(
-      'create or replace trigger set_user_id_%I
+      'create or replace trigger set_household_id_%I
        before insert on public.%I
-       for each row execute function public.set_user_id();',
+       for each row execute function private.set_household_id();',
       tbl, tbl
     );
   end loop;
 end;
 $$;
+
+create or replace function private.normalize_member_name(p_name text)
+returns text
+language sql
+immutable
+set search_path = public
+as $$
+  select nullif(trim(regexp_replace(coalesce(p_name, ''), '\s+', ' ', 'g')), '')
+$$;
+
+create or replace function private.create_household(p_name text)
+returns jsonb
+language plpgsql
+security definer
+set search_path = public
+as $$
+declare
+  v_uid uuid := auth.uid();
+  v_name text := private.normalize_member_name(p_name);
+  v_household_id uuid;
+  v_member_id uuid;
+  v_token uuid;
+begin
+  if v_uid is null then
+    raise exception 'Not authenticated';
+  end if;
+  if v_name is null then
+    raise exception 'Name required';
+  end if;
+
+  select hm.household_id, hm.id, h.join_token
+    into v_household_id, v_member_id, v_token
+  from public.household_members hm
+  join public.households h on h.id = hm.household_id
+  where hm.auth_user_id = v_uid
+  limit 1;
+
+  if v_household_id is not null then
+    update public.household_members
+    set display_name = v_name
+    where id = v_member_id;
+    return jsonb_build_object(
+      'household_id', v_household_id,
+      'member_id', v_member_id,
+      'display_name', v_name,
+      'join_token', v_token,
+      'action', 'created'
+    );
+  end if;
+
+  insert into public.households default values
+  returning id, join_token into v_household_id, v_token;
+
+  insert into public.household_members (household_id, display_name, auth_user_id)
+  values (v_household_id, v_name, v_uid)
+  returning id into v_member_id;
+
+  return jsonb_build_object(
+    'household_id', v_household_id,
+    'member_id', v_member_id,
+    'display_name', v_name,
+    'join_token', v_token,
+    'action', 'created'
+  );
+end;
+$$;
+
+create or replace function private.join_household(p_token uuid, p_name text)
+returns jsonb
+language plpgsql
+security definer
+set search_path = public
+as $$
+declare
+  v_uid uuid := auth.uid();
+  v_name text := private.normalize_member_name(p_name);
+  v_household_id uuid;
+  v_token uuid;
+  v_member_id uuid;
+  v_display_name text;
+  v_action text := 'joined';
+begin
+  if v_uid is null then
+    raise exception 'Not authenticated';
+  end if;
+  if v_name is null then
+    raise exception 'Name required';
+  end if;
+
+  select id, join_token
+    into v_household_id, v_token
+  from public.households
+  where join_token = p_token;
+
+  if v_household_id is null then
+    raise exception 'Invalid token';
+  end if;
+
+  select id, display_name
+    into v_member_id, v_display_name
+  from public.household_members
+  where household_id = v_household_id
+    and lower(trim(display_name)) = lower(v_name)
+  limit 1;
+
+  delete from public.household_members
+  where auth_user_id = v_uid
+    and (v_member_id is null or id <> v_member_id);
+
+  if v_member_id is not null then
+    update public.household_members
+    set auth_user_id = v_uid
+    where id = v_member_id;
+    v_action := 'rebind';
+  else
+    insert into public.household_members (household_id, display_name, auth_user_id)
+    values (v_household_id, v_name, v_uid)
+    returning id, display_name into v_member_id, v_display_name;
+  end if;
+
+  return jsonb_build_object(
+    'household_id', v_household_id,
+    'member_id', v_member_id,
+    'display_name', coalesce(v_display_name, v_name),
+    'join_token', v_token,
+    'action', v_action
+  );
+end;
+$$;
+
+create or replace function public.create_household(p_name text)
+returns jsonb
+language sql
+security invoker
+set search_path = public
+as $$
+  select private.create_household(p_name)
+$$;
+
+create or replace function public.join_household(p_token uuid, p_name text)
+returns jsonb
+language sql
+security invoker
+set search_path = public
+as $$
+  select private.join_household(p_token, p_name)
+$$;
+
+revoke all on function private.current_household_id() from public;
+revoke all on function private.set_household_id() from public;
+revoke all on function private.create_household(text) from public;
+revoke all on function private.join_household(uuid, text) from public;
+revoke all on function public.create_household(text) from public;
+revoke all on function public.join_household(uuid, text) from public;
+revoke all on function public.create_household(text) from anon;
+revoke all on function public.join_household(uuid, text) from anon;
+
+grant execute on function private.current_household_id() to authenticated, service_role;
+grant execute on function private.set_household_id() to authenticated, service_role;
+grant execute on function private.create_household(text) to authenticated, service_role;
+grant execute on function private.join_household(uuid, text) to authenticated, service_role;
+grant execute on function public.create_household(text) to authenticated;
+grant execute on function public.join_household(uuid, text) to authenticated;
+
+revoke all on function public.handle_new_user() from public, anon, authenticated;
+revoke all on function public.set_updated_at() from public, anon, authenticated;
+

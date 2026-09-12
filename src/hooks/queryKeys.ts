@@ -9,6 +9,9 @@ export const queryKeys = {
   mealPlans: ['mealPlans'] as const,
   meals: (planId: string) => ['mealPlans', planId, 'meals'] as const,
   shoppingLists: ['shoppingLists'] as const,
+  shoppingList: (weekStart: string) => ['shoppingLists', weekStart] as const,
   shoppingItems: (listId: string) => ['shoppingLists', listId, 'items'] as const,
+  shoppingItem: (id: string) => ['shoppingItems', id] as const,
   missing: ['missing'] as const,
+  meal: (id: string) => ['meal', id] as const,
 };

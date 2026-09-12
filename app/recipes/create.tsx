@@ -1,9 +1,9 @@
 import { useState } from 'react';
-import { StyleSheet, Text } from 'react-native';
+import { StyleSheet } from 'react-native';
 import { useRouter } from 'expo-router';
 import { useQueryClient } from '@tanstack/react-query';
 import { SafeAreaView } from 'react-native-safe-area-context';
-import { colors, typography, spacing } from '@/constants/theme';
+import { colors } from '@/constants/theme';
 import { ConfirmSheet } from '@/components/ui/ConfirmSheet';
 import { RecipeForm } from '@/features/recipes/RecipeForm';
 import { createRecipeWithIngredients } from '@/features/recipes/service';
@@ -25,7 +25,8 @@ export default function CreateRecipeScreen() {
         description: data.description,
         baseServings: data.baseServings,
         prepTimeMinutes: data.prepTimeMinutes,
-        category: data.category,
+        mealTypes: data.mealTypes,
+        dishType: data.dishType || null,
         steps: data.steps.split('\n').map((s) => s.trim()).filter(Boolean),
         notes: data.notes,
         ingredients: data.ingredients.map((i) => ({
@@ -37,8 +38,6 @@ export default function CreateRecipeScreen() {
       });
       await queryClient.invalidateQueries({ queryKey: queryKeys.recipes });
       await queryClient.invalidateQueries({ queryKey: queryKeys.ingredients });
-      await queryClient.invalidateQueries({ queryKey: queryKeys.pantryItems });
-      await queryClient.invalidateQueries({ queryKey: queryKeys.missing });
       router.replace(`/recipes/${recipe.id}`);
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Greška pri čuvanju recepta');
@@ -48,8 +47,7 @@ export default function CreateRecipeScreen() {
   };
 
   return (
-    <SafeAreaView style={styles.container} edges={['top']}>
-      <Text style={styles.title}>Novi recept</Text>
+    <SafeAreaView style={styles.container} edges={['bottom']}>
       <RecipeForm
         onSubmit={handleSubmit}
         submitTitle="Sačuvaj recept"
@@ -73,12 +71,5 @@ const styles = StyleSheet.create({
   container: {
     flex: 1,
     backgroundColor: colors.background,
-  },
-  title: {
-    ...typography.h1,
-    color: colors.text,
-    paddingHorizontal: spacing.lg,
-    paddingTop: spacing.lg,
-    paddingBottom: spacing.md,
   },
 });

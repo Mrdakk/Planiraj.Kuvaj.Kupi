@@ -1,3 +1,5 @@
+import { draftToRecipe, extractRecipeDraftFromHtml, htmlToPlainText } from './parsePage.ts';
+
 const ALLOWED_UNITS = [
   'g',
   'kg',
@@ -13,12 +15,7 @@ const ALLOWED_UNITS = [
   'kašičica',
 ] as const;
 
-const SYSTEM_PROMPT = `Ti si parser recepata za srpsku kuhinju.
-Otvori dati URL alatom visit_website i izvuci JEDAN recept.
-Vrati SAMO validan JSON, bez markdowna i bez objašnjenja.
-
-JSON šema:
-{
+const RECIPE_JSON_SCHEMA = `{
   "name": "string",
   "description": "string ili prazno",
   "baseServings": number,
@@ -38,7 +35,22 @@ Pravila:
 - kašika = tbsp, kašičica = tsp, čen = čen belog luka, glavica = glavica luka.
 - quantity je broj (decimala je OK, npr. 0.5).
 - emoji je tačno jedan pictograph (npr. 🍲), bez teksta.
-- Ako stranica nema recept, vrati: {"error":"Nije pronađen recept na stranici."}`;
+- Nemoj da izmišljaš sastojke koji nisu u materijalu.
+- Ako materijal nema recept, vrati: {"error":"Nije pronađen recept na stranici."}`;
+
+const PARSE_SYSTEM_PROMPT = `Ti si parser recepata za srpsku kuhinju.
+Dobijaš JSON-LD nacrt ili običan tekst stranice. NE otvaraj URL.
+Vrati SAMO validan JSON, bez markdowna i bez objašnjenja.
+
+JSON šema:
+${RECIPE_JSON_SCHEMA}`;
+
+const VISIT_SYSTEM_PROMPT = `Ti si parser recepata za srpsku kuhinju.
+Otvori dati URL alatom visit_website i izvuci JEDAN recept.
+Vrati SAMO validan JSON, bez markdowna i bez objašnjenja.
+
+JSON šema:
+${RECIPE_JSON_SCHEMA}`;
 
 const EMOJI_SYSTEM_PROMPT = `Ti biraš JEDAN food emoji za svaki naziv recepta.
 Vrati SAMO validan JSON, bez markdowna i bez objašnjenja.
@@ -187,16 +199,41 @@ async function handleEmojiBatch(
   return jsonResponse({ emojis });
 }
 
-async function handleImportUrl(groqKey: string, url: string) {
-  const groq = await groqChat(groqKey, {
+function isCompleteRecipe(recipe: Record<string, unknown>): boolean {
+  if (typeof recipe.error === 'string') return false;
+  const name = typeof recipe.name === 'string' && recipe.name.trim();
+  const ingredients = Array.isArray(recipe.ingredients) ? recipe.ingredients : [];
+  return Boolean(name && ingredients.length > 0);
+}
+
+function recipeFromGroq(content: string): Record<string, unknown> | null {
+  try {
+    const recipe = extractJson(content);
+    return isCompleteRecipe(recipe) ? recipe : null;
+  } catch {
+    return null;
+  }
+}
+
+async function groqParseMaterial(groqKey: string, material: string) {
+  return groqChat(groqKey, {
+    model: 'openai/gpt-oss-20b',
+    temperature: 0.1,
+    response_format: { type: 'json_object' },
+    messages: [
+      { role: 'system', content: PARSE_SYSTEM_PROMPT },
+      { role: 'user', content: material.slice(0, 14000) },
+    ],
+  });
+}
+
+async function groqVisitWebsite(groqKey: string, url: string) {
+  return groqChat(groqKey, {
     model: 'groq/compound-mini',
     temperature: 0.1,
     messages: [
-      { role: 'system', content: SYSTEM_PROMPT },
-      {
-        role: 'user',
-        content: `Otvori ovaj link i izvuci recept: ${url}`,
-      },
+      { role: 'system', content: VISIT_SYSTEM_PROMPT },
+      { role: 'user', content: `Otvori ovaj link i izvuci recept: ${url}` },
     ],
     compound_custom: {
       tools: {
@@ -204,29 +241,79 @@ async function handleImportUrl(groqKey: string, url: string) {
       },
     },
   });
+}
 
-  if (!groq.ok) {
+async function fetchRecipePage(url: string): Promise<{ ok: true; html: string } | { ok: false; status: number }> {
+  try {
+    const response = await fetch(url, {
+      redirect: 'follow',
+      headers: {
+        'User-Agent':
+          'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36',
+        Accept: 'text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8',
+        'Accept-Language': 'sr-RS,sr;q=0.9,en-US;q=0.8,en;q=0.7',
+      },
+    });
+    if (!response.ok) return { ok: false, status: response.status };
+    const html = await response.text();
+    return { ok: true, html: html.slice(0, 1_500_000) };
+  } catch {
+    return { ok: false, status: 0 };
+  }
+}
+
+async function handleImportUrl(groqKey: string, url: string) {
+  const page = await fetchRecipePage(url);
+
+  if (page.ok) {
+    const draft = extractRecipeDraftFromHtml(page.html);
+    if (draft) {
+      const groq = await groqParseMaterial(
+        groqKey,
+        `Normalizuj ovaj recept u JSON šemu.\n${JSON.stringify(draft)}`
+      );
+      if (groq.ok) {
+        const parsed = recipeFromGroq(groq.content);
+        if (parsed) return jsonResponse({ recipe: parsed });
+      } else if (groq.status === 429) {
+        return groqErrorResponse(groq.status, groq.errorMessage);
+      }
+      return jsonResponse({ recipe: draftToRecipe(draft) });
+    }
+
+    const text = htmlToPlainText(page.html);
+    if (text.length > 80) {
+      const groq = await groqParseMaterial(
+        groqKey,
+        `Izvuci recept sa ove stranice (${url}):\n${text}`
+      );
+      if (groq.ok) {
+        const parsed = recipeFromGroq(groq.content);
+        if (parsed) return jsonResponse({ recipe: parsed });
+      } else if (groq.status === 429) {
+        return groqErrorResponse(groq.status, groq.errorMessage);
+      }
+    }
+  }
+
+  const visited = await groqVisitWebsite(groqKey, url);
+  if (!visited.ok) {
     return groqErrorResponse(
-      groq.status,
-      groq.status === 429 ? groq.errorMessage : groq.errorMessage || 'Groq nije uspeo da pročita stranicu.'
+      visited.status,
+      visited.errorMessage || 'Groq nije uspeo da pročita stranicu.'
     );
   }
-  if (!groq.content) {
+  if (!visited.content) {
     return jsonResponse({ error: 'Groq nije vratio sadržaj recepta.' }, 502);
   }
 
-  let recipe: Record<string, unknown>;
-  try {
-    recipe = extractJson(groq.content);
-  } catch {
-    return jsonResponse({ error: 'Nije mogao da se pročita recept sa te stranice.' }, 422);
-  }
+  const parsed = recipeFromGroq(visited.content);
+  if (parsed) return jsonResponse({ recipe: parsed });
 
-  if (typeof recipe.error === 'string') {
-    return jsonResponse({ error: recipe.error }, 422);
-  }
-
-  return jsonResponse({ recipe });
+  return jsonResponse(
+    { error: 'Nije mogao da se pročita recept sa te stranice. Probaj drugi link ili unesi recept ručno.' },
+    422
+  );
 }
 
 Deno.serve(async (req) => {

@@ -10,7 +10,7 @@ import { Input } from '@/components/ui/Input';
 import { useShoppingList } from '@/hooks/useShoppingList';
 import { addManualShoppingItem, ensureShoppingList } from '@/features/shopping/service';
 import { queryKeys } from '@/hooks/queryKeys';
-import { getWeekStart } from '@/features/planner/service';
+import { usePlanWeek } from '@/hooks/usePlanWeek';
 import { allUnits, type Unit } from '@/constants/units';
 import { parseQuantity } from '@/lib/formatQuantity';
 import { groceryStoreSections, type GroceryStoreSection } from '@/constants/categories';
@@ -18,7 +18,7 @@ import { groceryStoreSections, type GroceryStoreSection } from '@/constants/cate
 export default function CreateShoppingItemScreen() {
   const router = useRouter();
   const queryClient = useQueryClient();
-  const weekStart = getWeekStart(new Date());
+  const { weekStart } = usePlanWeek();
   const { data: list } = useShoppingList(weekStart);
 
   const [name, setName] = useState('');
@@ -48,8 +48,7 @@ export default function CreateShoppingItemScreen() {
   };
 
   return (
-    <SafeAreaView style={styles.container} edges={['top']}>
-      <Text style={styles.title}>Dodaj stavku</Text>
+    <SafeAreaView style={styles.container} edges={['bottom']}>
       <View style={styles.content}>
         <Input
           label="Naziv"
@@ -107,13 +106,6 @@ const styles = StyleSheet.create({
   container: {
     flex: 1,
     backgroundColor: colors.background,
-  },
-  title: {
-    ...typography.h1,
-    color: colors.text,
-    paddingHorizontal: spacing.lg,
-    paddingTop: spacing.lg,
-    paddingBottom: spacing.md,
   },
   content: {
     padding: spacing.lg,

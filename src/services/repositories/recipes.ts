@@ -1,6 +1,11 @@
 import { BaseRepository } from '@/database/repository';
 import type { SQLiteRecipeRow, SyncStatus } from '@/database/types';
 import type { Recipe } from '@/types';
+import { isDishType } from '@/constants/categories';
+import {
+  classifyLegacyRecipeCategory,
+  parseMealTypesJson,
+} from '@/features/recipes/classification';
 
 const columns = [
   'id',
@@ -10,6 +15,7 @@ const columns = [
   'base_servings',
   'prep_time_minutes',
   'category',
+  'meal_types',
   'is_favorite',
   'steps',
   'notes',
@@ -21,6 +27,16 @@ const columns = [
 
 const mapper = {
   fromRow(row: Record<string, unknown>): Recipe {
+    const category = row.category ? String(row.category) : null;
+    const storedMealTypes = parseMealTypesJson(
+      row.meal_types == null ? null : String(row.meal_types)
+    );
+    const storedDishType = category && isDishType(category) ? category : null;
+    const classified =
+      storedMealTypes.length > 0
+        ? { mealTypes: storedMealTypes, dishType: storedDishType }
+        : classifyLegacyRecipeCategory(category);
+
     return {
       id: String(row.id),
       name: String(row.name),
@@ -28,7 +44,8 @@ const mapper = {
       imageUri: row.image_uri ? String(row.image_uri) : null,
       baseServings: Number(row.base_servings),
       prepTimeMinutes: row.prep_time_minutes ? Number(row.prep_time_minutes) : null,
-      category: row.category ? String(row.category) : null,
+      mealTypes: classified.mealTypes,
+      dishType: storedMealTypes.length > 0 ? storedDishType : classified.dishType,
       isFavorite: Boolean(row.is_favorite),
       steps: JSON.parse(String(row.steps ?? '[]')),
       notes: row.notes ? String(row.notes) : null,
@@ -45,7 +62,8 @@ const mapper = {
       image_uri: entity.imageUri,
       base_servings: entity.baseServings,
       prep_time_minutes: entity.prepTimeMinutes,
-      category: entity.category,
+      category: entity.dishType,
+      meal_types: JSON.stringify(entity.mealTypes),
       is_favorite: entity.isFavorite ? 1 : 0,
       steps: JSON.stringify(entity.steps),
       notes: entity.notes,

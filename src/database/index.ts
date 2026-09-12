@@ -6,14 +6,12 @@ export const LOCAL_DB_NAME = 'pkk.db';
 type DbGlobal = typeof globalThis & {
   __pkkSqlite?: SQLite.SQLiteDatabase;
   __pkkSqliteInit?: Promise<SQLite.SQLiteDatabase>;
-  __pkkSqliteOpening?: SQLite.SQLiteDatabase;
 };
 
 const dbGlobal = globalThis as DbGlobal;
 
 export async function getDatabase(): Promise<SQLite.SQLiteDatabase> {
   if (dbGlobal.__pkkSqlite) return dbGlobal.__pkkSqlite;
-  if (dbGlobal.__pkkSqliteOpening) return dbGlobal.__pkkSqliteOpening;
   if (!dbGlobal.__pkkSqliteInit) {
     dbGlobal.__pkkSqliteInit = initializeDatabase();
   }
@@ -28,16 +26,6 @@ async function initializeDatabase(): Promise<SQLite.SQLiteDatabase> {
   await migrateDatabase(db);
   await ensureCoreTables(db);
 
-  dbGlobal.__pkkSqliteOpening = db;
-  try {
-    const { seedInitialRecipes } = await import('@/features/recipes/seed');
-    await seedInitialRecipes();
-  } catch (error) {
-    console.error('Neuspelo učitavanje početnih recepata', error);
-  } finally {
-    dbGlobal.__pkkSqliteOpening = undefined;
-  }
-
   dbGlobal.__pkkSqlite = db;
   return db;
 }
@@ -47,7 +35,6 @@ export async function closeDatabase(): Promise<void> {
     await dbGlobal.__pkkSqlite.closeAsync();
     dbGlobal.__pkkSqlite = undefined;
   }
-  dbGlobal.__pkkSqliteOpening = undefined;
   dbGlobal.__pkkSqliteInit = undefined;
 }
 

@@ -216,4 +216,24 @@ DELETE FROM shopping_items;
 DELETE FROM shopping_lists;
 `,
   5: `ALTER TABLE ingredients ADD COLUMN track_presence INTEGER NOT NULL DEFAULT 0;`,
+  6: `
+ALTER TABLE recipes ADD COLUMN meal_types TEXT NOT NULL DEFAULT '[]';
+UPDATE recipes SET meal_types = '["Doručak"]', category = NULL WHERE category = 'Doručak';
+UPDATE recipes SET meal_types = '["Užina"]', category = NULL WHERE category = 'Užina';
+UPDATE recipes SET meal_types = '["Ručak"]', category = NULL WHERE category = 'Ručak';
+UPDATE recipes SET meal_types = '["Večera"]', category = NULL WHERE category = 'Večera';
+UPDATE recipes SET meal_types = '["Desert"]', category = 'Slatko' WHERE category = 'Desert';
+UPDATE recipes SET meal_types = '["Ručak","Večera"]' WHERE category = 'Glavno jelo';
+`,
+  7: `
+CREATE TABLE IF NOT EXISTS household_state (
+  id TEXT PRIMARY KEY NOT NULL DEFAULT 'current',
+  household_id TEXT NOT NULL,
+  member_id TEXT NOT NULL,
+  display_name TEXT NOT NULL,
+  join_token TEXT NOT NULL,
+  created_at TEXT NOT NULL,
+  updated_at TEXT NOT NULL
+);
+`,
 };

@@ -224,6 +224,25 @@ export async function applyAddToShopping(
   }
 }
 
+export function checkedShoppingItems(items: ShoppingItem[]): ShoppingItem[] {
+  return items.filter((item) => item.isChecked);
+}
+
+export async function updateShoppingItemDetails(
+  item: ShoppingItem,
+  quantity: number,
+  unit: Unit
+): Promise<ShoppingItem> {
+  const updated: ShoppingItem = {
+    ...item,
+    quantity,
+    unit,
+    updatedAt: nowISO(),
+  };
+  await shoppingItemRepository.update(updated);
+  return updated;
+}
+
 export async function toggleShoppingItemChecked(item: ShoppingItem): Promise<ShoppingItem> {
   const updated: ShoppingItem = { ...item, isChecked: !item.isChecked, updatedAt: nowISO() };
   await shoppingItemRepository.update(updated);

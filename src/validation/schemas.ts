@@ -1,6 +1,11 @@
 import { z } from 'zod';
 import { allUnits } from '@/constants/units';
-import { ingredientCategories, groceryStoreSections, mealTypes } from '@/constants/categories';
+import {
+  dishTypes,
+  ingredientCategories,
+  groceryStoreSections,
+  mealTypes,
+} from '@/constants/categories';
 
 export const ingredientSchema = z.object({
   id: z.string().uuid().optional(),
@@ -33,7 +38,8 @@ export const recipeSchema = z.object({
   imageUri: z.string().optional(),
   baseServings: z.number().int().positive().default(4),
   prepTimeMinutes: z.number().int().nonnegative().optional(),
-  category: z.string().max(100).optional(),
+  mealTypes: z.array(z.enum(mealTypes)).default(['Ručak']),
+  dishType: z.enum(dishTypes).nullable().optional(),
   isFavorite: z.boolean().default(false),
   steps: z.array(z.string().max(2000)).default([]),
   notes: z.string().max(2000).optional(),

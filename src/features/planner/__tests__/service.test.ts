@@ -215,6 +215,18 @@ describe('addMeal, copyMeal, moveMeal refuse past dates', () => {
     expect(meals.insert).toHaveBeenCalledTimes(2);
   });
 
+  it('addMeal: stores blank notes as null', async () => {
+    const meal = await addMeal('plan-week-1', '2026-09-11', 'Ručak', 'rec-1', 4, '   ');
+    expect(meal.notes).toBeNull();
+    expect(meals.insert).toHaveBeenCalledWith(expect.objectContaining({ notes: null }));
+  });
+
+  it('addMeal: stores trimmed meal notes', async () => {
+    const meal = await addMeal('plan-week-1', '2026-09-11', 'Ručak', 'rec-1', 4, '  Bez luka.  ');
+    expect(meal.notes).toBe('Bez luka.');
+    expect(meals.insert).toHaveBeenCalledWith(expect.objectContaining({ notes: 'Bez luka.' }));
+  });
+
   it('addMeal: allowPast inserts a past date for seed data', async () => {
     await expect(
       addMeal('plan-week-1', '2026-09-09', 'Ručak', 'rec-1', 4, undefined, { allowPast: true })

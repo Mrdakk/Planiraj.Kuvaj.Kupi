@@ -11,6 +11,7 @@ import { ConfirmSheet } from '@/components/ui/ConfirmSheet';
 import { EmptyState } from '@/components/ui/EmptyState';
 import { EmojiBadge } from '@/components/ui/EmojiBadge';
 import { formatAmount } from '@/lib/formatQuantity';
+import { formatServings } from '@/lib/formatServings';
 import { displayIngredientName } from '@/lib/ingredientNames';
 import { getRecipeEmoji, getIngredientEmoji } from '@/constants/emojis';
 import { isCreatedToday } from '@/lib/dates';
@@ -47,10 +48,11 @@ export default function RecipeDetailScreen() {
   }
 
   return (
-    <SafeAreaView style={styles.container} edges={['top']}>
+    <SafeAreaView style={styles.container} edges={['bottom']}>
       <Stack.Screen
         options={{
           title: recipe.name,
+          headerTitle: '',
           headerRight: () => (
             <Pressable
               onPress={() => router.push(`/recipes/edit/${recipe.id}`)}
@@ -78,10 +80,11 @@ export default function RecipeDetailScreen() {
           </View>
         </View>
 
-        {recipe.category && (
-          <Text style={styles.meta}>{recipe.category}</Text>
-        )}
-        <Text style={styles.meta}>{recipe.baseServings} porcije</Text>
+        {recipe.dishType ? <Text style={styles.meta}>{recipe.dishType}</Text> : null}
+        {recipe.mealTypes.length > 0 ? (
+          <Text style={styles.meta}>{recipe.mealTypes.join(' · ')}</Text>
+        ) : null}
+        <Text style={styles.meta}>{formatServings(recipe.baseServings)}</Text>
         {recipe.prepTimeMinutes && (
           <Text style={styles.meta}>Vreme pripreme: {recipe.prepTimeMinutes} min</Text>
         )}

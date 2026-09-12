@@ -2,9 +2,11 @@ import { useState } from 'react';
 import { ScrollView, StyleSheet, Text, View, Pressable } from 'react-native';
 import { Picker } from '@react-native-picker/picker';
 import { Button } from '@/components/ui/Button';
+import { ChipToggleRow } from '@/components/ui/ChipRow';
 import { Input } from '@/components/ui/Input';
 import { Card } from '@/components/ui/Card';
 import { allUnits, type Unit } from '@/constants/units';
+import { dishTypes, mealTypes, type DishType, type MealType } from '@/constants/categories';
 import { colors, spacing, typography } from '@/constants/theme';
 import { formatQuantity } from '@/lib/formatQuantity';
 import { canonicalIngredientName } from '@/lib/ingredientNames';
@@ -15,7 +17,8 @@ export interface RecipeFormData {
   description: string;
   baseServings: number;
   prepTimeMinutes: number | undefined;
-  category: string;
+  mealTypes: MealType[];
+  dishType: DishType | '';
   steps: string;
   notes: string;
   ingredients: {
@@ -48,7 +51,8 @@ export function RecipeForm({
         description: defaultValues.description ?? '',
         baseServings: defaultValues.baseServings,
         prepTimeMinutes: defaultValues.prepTimeMinutes ?? undefined,
-        category: defaultValues.category ?? '',
+        mealTypes: defaultValues.mealTypes.length > 0 ? defaultValues.mealTypes : ['Ručak'],
+        dishType: defaultValues.dishType ?? '',
         steps: defaultValues.steps.join('\n'),
         notes: defaultValues.notes ?? '',
         ingredients: defaultValues.ingredients.map((i) => ({
@@ -66,7 +70,8 @@ export function RecipeForm({
       description: '',
       baseServings: 4,
       prepTimeMinutes: undefined,
-      category: '',
+      mealTypes: ['Ručak'],
+      dishType: '',
       steps: '',
       notes: '',
       ingredients: [{ rawName: '', quantity: '', unit: 'kom', notes: '' }],
@@ -103,6 +108,16 @@ export function RecipeForm({
       ...prev,
       ingredients: prev.ingredients.filter((_, i) => i !== index),
     }));
+  };
+
+  const toggleMealType = (value: string) => {
+    const item = value as MealType;
+    setForm((prev) => {
+      const selected = prev.mealTypes.includes(item)
+        ? prev.mealTypes.filter((type) => type !== item)
+        : [...prev.mealTypes, item];
+      return { ...prev, mealTypes: selected.length > 0 ? selected : prev.mealTypes };
+    });
   };
 
   const handleSubmit = () => {
@@ -149,12 +164,23 @@ export function RecipeForm({
         </View>
       </View>
 
-      <Input
-        label="Kategorija"
-        value={form.category}
-        onChangeText={(text) => updateField('category', text)}
-        placeholder="npr. Italijanska"
-      />
+      <Text style={styles.label}>Za koji obrok</Text>
+      <View style={styles.chips}>
+        <ChipToggleRow items={mealTypes} selected={form.mealTypes} onToggle={toggleMealType} />
+      </View>
+
+      <Text style={styles.label}>Tip jela</Text>
+      <View style={styles.pickerContainer}>
+        <Picker
+          selectedValue={form.dishType}
+          onValueChange={(value) => updateField('dishType', value as DishType | '')}
+        >
+          <Picker.Item label="Nije izabrano" value="" />
+          {dishTypes.map((type) => (
+            <Picker.Item key={type} label={type} value={type} />
+          ))}
+        </Picker>
+      </View>
 
       <Input
         label="Koraci pripreme"
@@ -246,6 +272,9 @@ const styles = StyleSheet.create({
   },
   half: {
     flex: 1,
+  },
+  chips: {
+    marginBottom: spacing.md,
   },
   sectionTitle: {
     ...typography.h2,

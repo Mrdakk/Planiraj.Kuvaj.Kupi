@@ -12,6 +12,7 @@ import { Input } from '@/components/ui/Input';
 import { RecipePickerField } from '@/components/ui/RecipePickerField';
 import { mealTypes, type MealType } from '@/constants/categories';
 import { addMeal, ensureMealPlan, getWeekStart } from '@/features/planner/service';
+import { defaultMealServings } from '@/features/planner/servings';
 import { useRecipes } from '@/hooks/useRecipes';
 import { queryKeys } from '@/hooks/queryKeys';
 import { parseISODate, todayISO } from '@/lib/dates';
@@ -42,25 +43,33 @@ export default function CreateMealScreen() {
   const [notes, setNotes] = useState('');
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  const servingsSeeded = useRef(false);
+  const servingsForRecipeId = useRef<string | null>(null);
 
   const queryClient = useQueryClient();
 
   useEffect(() => {
-    if (servingsSeeded.current || !recipeIdParam) return;
+    if (!recipeId || servingsForRecipeId.current === recipeId) return;
     const found = recipes?.find((recipe) => recipe.id === recipeId);
     if (!found) return;
-    setServings(String(found.baseServings));
-    servingsSeeded.current = true;
-  }, [recipes, recipeId, recipeIdParam]);
+    setServings(String(defaultMealServings(found.baseServings)));
+    servingsForRecipeId.current = recipeId;
+  }, [recipes, recipeId]);
 
   const handleSubmit = async () => {
     if (!recipeId || !date || loading) return;
     setLoading(true);
     try {
+      const found = recipes?.find((recipe) => recipe.id === recipeId);
       const weekStart = getWeekStart(parseISODate(date) ?? new Date());
       const plan = await ensureMealPlan(weekStart);
-      await addMeal(plan.id, date, mealType, recipeId, Number(servings) || 4, notes);
+      await addMeal(
+        plan.id,
+        date,
+        mealType,
+        recipeId,
+        Number(servings) || defaultMealServings(found?.baseServings),
+        notes
+      );
       await queryClient.invalidateQueries({ queryKey: queryKeys.mealPlans });
       await queryClient.invalidateQueries({ queryKey: queryKeys.meals(plan.id) });
       await queryClient.invalidateQueries({ queryKey: queryKeys.missing });

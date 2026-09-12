@@ -1,4 +1,5 @@
 import { supabase } from '@/lib/supabase';
+import { classifyImportedCategory } from '@/features/recipes/classification';
 import { normalizeRecipeEmoji } from '@/constants/emojis';
 import { allUnits, type Unit } from '@/constants/units';
 import type { CreateRecipeInput } from '@/features/recipes/service';
@@ -92,6 +93,8 @@ function mapRecipe(payload: Record<string, unknown>, sourceUrl: string): Importe
   const sourceNote = `Izvor: ${sourceUrl}`;
   const notes = String(payload.notes ?? '').trim();
 
+  const classified = classifyImportedCategory(String(payload.category ?? '').trim() || null);
+
   return {
     name,
     description: String(payload.description ?? '').trim() || undefined,
@@ -99,7 +102,8 @@ function mapRecipe(payload: Record<string, unknown>, sourceUrl: string): Importe
     prepTimeMinutes: payload.prepTimeMinutes
       ? Math.max(1, Math.round(asNumber(payload.prepTimeMinutes)))
       : undefined,
-    category: String(payload.category ?? '').trim() || undefined,
+    mealTypes: classified.mealTypes,
+    dishType: classified.dishType,
     steps,
     notes: notes ? `${notes}\n${sourceNote}` : sourceNote,
     emoji: normalizeRecipeEmoji(String(payload.emoji ?? '')) ?? undefined,

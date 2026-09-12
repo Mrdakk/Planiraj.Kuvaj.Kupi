@@ -8,23 +8,24 @@ import { useMealPlan, useMeals } from '@/hooks/useMealPlans';
 import { useRecipes } from '@/hooks/useRecipes';
 import { ChipRow } from '@/components/ui/ChipRow';
 import { EmptyState } from '@/components/ui/EmptyState';
+import { emptyCta } from '@/components/ui/emptyCta';
 import { FabButton } from '@/components/ui/FabButton';
 import { Button } from '@/components/ui/Button';
 import { EmojiBadge } from '@/components/ui/EmojiBadge';
 import { NewBadge } from '@/components/ui/NewBadge';
 import { getRecipeEmoji } from '@/constants/emojis';
 import { isCreatedToday, todayISO, dateKey } from '@/lib/dates';
+import { formatServings } from '@/lib/formatServings';
 import {
-  getWeekStart,
   getWeekDates,
   weekDayChipLabel,
   defaultDayForWeek,
   compareMealsByPlanOrder,
   formatWeekNavRange,
   formatWeekRange,
-  isCurrentWeek,
   isPastDay,
 } from '@/features/planner/service';
+import { usePlanWeek } from '@/hooks/usePlanWeek';
 import { SuggestMealSheet } from '@/features/planner/SuggestMealSheet';
 import { mealSurface, mealSurfacePressed } from '@/features/planner/mealStatus';
 import type { Meal, Recipe } from '@/types';
@@ -32,11 +33,10 @@ import type { MealType } from '@/constants/categories';
 
 export default function PlanScreen() {
   const router = useRouter();
-  const [currentDate, setCurrentDate] = useState(new Date());
+  const { weekStart, isThisWeek, goPreviousWeek, goNextWeek, goThisWeek } = usePlanWeek();
   const [selectedDate, setSelectedDate] = useState(todayISO);
   const [suggestOpen, setSuggestOpen] = useState(false);
 
-  const weekStart = getWeekStart(currentDate);
   const weekDates = useMemo(() => getWeekDates(weekStart), [weekStart]);
   const { data: plan, isLoading: planLoading } = useMealPlan(weekStart);
   const { data: meals, isLoading: mealsLoading } = useMeals(plan?.id);
@@ -65,20 +65,8 @@ export default function PlanScreen() {
     return groups;
   }, [meals, selectedDate]);
 
-  const goPreviousWeek = () => {
-    const d = new Date(currentDate);
-    d.setDate(d.getDate() - 7);
-    setCurrentDate(d);
-  };
-
-  const goNextWeek = () => {
-    const d = new Date(currentDate);
-    d.setDate(d.getDate() + 7);
-    setCurrentDate(d);
-  };
-
-  const goThisWeek = () => {
-    setCurrentDate(new Date());
+  const goToThisWeek = () => {
+    goThisWeek();
     setSelectedDate(todayISO());
   };
 
@@ -86,10 +74,10 @@ export default function PlanScreen() {
     <SafeAreaView style={styles.container} edges={['top']}>
       <WeekHeader
         weekStart={weekStart}
-        isThisWeek={isCurrentWeek(weekStart)}
+        isThisWeek={isThisWeek}
         onPrev={goPreviousWeek}
         onNext={goNextWeek}
-        onToday={goThisWeek}
+        onToday={goToThisWeek}
       />
 
       <ChipRow
@@ -126,6 +114,8 @@ export default function PlanScreen() {
           title="Nema obroka za ovaj dan"
           message="Dodaj obrok za izabrani dan."
           icon="restaurant-outline"
+          actionTitle={emptyCta.missing.title}
+          onAction={() => router.push(emptyCta.missing.href)}
         />
       )}
 
@@ -186,7 +176,7 @@ function MealTypeGroup({
                     </Text>
                     {isCreatedToday(recipe?.createdAt) ? <NewBadge /> : null}
                   </View>
-                  <Text style={styles.mealMeta}>{meal.servings} porcije</Text>
+                  <Text style={styles.mealMeta}>{formatServings(meal.servings)}</Text>
                 </View>
                 <Ionicons name="chevron-forward" size={18} color={colors.textMuted} />
               </Pressable>

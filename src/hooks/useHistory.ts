@@ -1,23 +1,16 @@
 import { useQuery } from '@tanstack/react-query';
-import { consumptionLogRepository, mealRepository, recipeRepository } from '@/services/repositories';
+import { mealRepository, recipeRepository } from '@/services/repositories';
+import { buildCookedMealHistory } from '@/features/cooking/history';
 
-export function useConsumptionHistory() {
+export function useCookedMealHistory() {
   return useQuery({
     queryKey: ['consumptionLogs'],
     queryFn: async () => {
-      const logs = await consumptionLogRepository.findAll('consumed_at DESC');
-      const meals = await mealRepository.findAll();
-      const recipes = await recipeRepository.findAll();
-      const mealMap = new Map(meals.map((m) => [m.id, m]));
-      const recipeMap = new Map(recipes.map((r) => [r.id, r]));
-
-      return logs.map((log) => ({
-        ...log,
-        meal: mealMap.get(log.mealId) ?? null,
-        recipe: mealMap.get(log.mealId)?.recipeId
-          ? recipeMap.get(mealMap.get(log.mealId)!.recipeId) ?? null
-          : null,
-      }));
+      const [meals, recipes] = await Promise.all([
+        mealRepository.findAll(),
+        recipeRepository.findAll(),
+      ]);
+      return buildCookedMealHistory(meals, recipes);
     },
   });
 }

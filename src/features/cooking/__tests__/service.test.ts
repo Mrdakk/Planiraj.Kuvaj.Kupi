@@ -12,6 +12,8 @@ jest.mock('@/services/repositories', () => ({
   },
   consumptionLogRepository: {
     insert: jest.fn(),
+    findManyWhere: jest.fn(),
+    delete: jest.fn(),
   },
   mealRepository: {
     update: jest.fn(),
@@ -32,7 +34,7 @@ import {
   pantryItemRepository,
   recipeIngredientRepository,
 } from '@/services/repositories';
-import { buildConsumptionPreview, consumeMeal, displayIngredientName } from '../service';
+import { buildConsumptionPreview, consumeMeal, displayIngredientName, unconsumeMeal } from '../service';
 
 const recipes = recipeIngredientRepository as unknown as {
   findManyWhere: jest.Mock<(...args: never[]) => Promise<RecipeIngredient[]>>;
@@ -44,6 +46,8 @@ const pantry = pantryItemRepository as unknown as {
 };
 const logsRepo = consumptionLogRepository as unknown as {
   insert: jest.Mock<(log: ConsumptionLog) => Promise<ConsumptionLog>>;
+  findManyWhere: jest.Mock<(...args: never[]) => Promise<ConsumptionLog[]>>;
+  delete: jest.Mock<(id: string) => Promise<void>>;
 };
 const meals = mealRepository as unknown as {
   update: jest.Mock<(meal: Meal) => Promise<Meal>>;
@@ -97,6 +101,20 @@ function createPantryItem(overrides: Partial<PantryItem> = {}): PantryItem {
   };
 }
 
+function createConsumptionLog(overrides: Partial<ConsumptionLog> = {}): ConsumptionLog {
+  return {
+    id: 'log-1',
+    mealId: 'meal-1',
+    ingredientId: 'ing-eggs',
+    quantity: 4,
+    unit: 'kom',
+    consumedAt: '2026-09-01T12:00:00.000Z',
+    createdAt: '2026-09-01T12:00:00.000Z',
+    updatedAt: '2026-09-01T12:00:00.000Z',
+    ...overrides,
+  };
+}
+
 describe('meal detail actions: mark as cooked', () => {
   beforeEach(() => {
     recipes.findManyWhere.mockReset();
@@ -104,11 +122,15 @@ describe('meal detail actions: mark as cooked', () => {
     pantry.update.mockReset();
     pantry.insert.mockReset();
     logsRepo.insert.mockReset();
+    logsRepo.findManyWhere.mockReset();
+    logsRepo.delete.mockReset();
     meals.update.mockReset();
     ingredients.findAll.mockReset();
     pantry.update.mockImplementation(async (item) => item);
     pantry.insert.mockImplementation(async (item) => item);
     logsRepo.insert.mockImplementation(async (log) => log);
+    logsRepo.findManyWhere.mockResolvedValue([]);
+    logsRepo.delete.mockImplementation(async () => undefined);
     meals.update.mockImplementation(async (meal) => meal);
     ingredients.findAll.mockResolvedValue([]);
   });
@@ -273,3 +295,74 @@ describe('meal detail actions: mark as cooked', () => {
     );
   });
 });
+
+describe('unconsumeMeal', () => {
+  beforeEach(() => {
+    pantry.findAll.mockReset();
+    pantry.update.mockReset();
+    pantry.insert.mockReset();
+    logsRepo.findManyWhere.mockReset();
+    logsRepo.delete.mockReset();
+    meals.update.mockReset();
+    pantry.update.mockImplementation(async (item) => item);
+    pantry.insert.mockImplementation(async (item) => item);
+    logsRepo.delete.mockImplementation(async () => undefined);
+    meals.update.mockImplementation(async (meal) => meal);
+  });
+
+  it('restores pantry from logs, deletes logs, and unlocks the meal', async () => {
+    const meal = createMeal({ isCooked: true });
+    logsRepo.findManyWhere.mockResolvedValue([createConsumptionLog({ quantity: 4 })]);
+    pantry.findAll.mockResolvedValue([createPantryItem({ quantity: 8 })]);
+
+    await unconsumeMeal(meal);
+
+    expect(pantry.update).toHaveBeenCalledWith(
+      expect.objectContaining({ id: 'pantry-1', quantity: 12 })
+    );
+    expect(logsRepo.delete).toHaveBeenCalledWith('log-1');
+    expect(meals.update).toHaveBeenCalledWith(
+      expect.objectContaining({ id: 'meal-1', isCooked: false })
+    );
+  });
+
+  it('creates a pantry row when the ingredient is gone', async () => {
+    const meal = createMeal({ isCooked: true });
+    logsRepo.findManyWhere.mockResolvedValue([
+      createConsumptionLog({ ingredientId: 'ing-ham', quantity: 120, unit: 'g' }),
+    ]);
+    pantry.findAll.mockResolvedValue([]);
+
+    await unconsumeMeal(meal);
+
+    expect(pantry.insert).toHaveBeenCalledWith(
+      expect.objectContaining({
+        ingredientId: 'ing-ham',
+        quantity: 120,
+        unit: 'g',
+      })
+    );
+    expect(meals.update).toHaveBeenCalledWith(expect.objectContaining({ isCooked: false }));
+  });
+
+  it('still unlocks a cooked meal that has no consumption logs', async () => {
+    const meal = createMeal({ isCooked: true });
+    logsRepo.findManyWhere.mockResolvedValue([]);
+    pantry.findAll.mockResolvedValue([]);
+
+    await unconsumeMeal(meal);
+
+    expect(pantry.update).not.toHaveBeenCalled();
+    expect(pantry.insert).not.toHaveBeenCalled();
+    expect(logsRepo.delete).not.toHaveBeenCalled();
+    expect(meals.update).toHaveBeenCalledWith(expect.objectContaining({ isCooked: false }));
+  });
+
+  it('refuses to undo a meal that is not cooked', async () => {
+    await expect(unconsumeMeal(createMeal({ isCooked: false }))).rejects.toThrow(
+      'Obrok nije označen kao kuvano.'
+    );
+    expect(meals.update).not.toHaveBeenCalled();
+  });
+});
+

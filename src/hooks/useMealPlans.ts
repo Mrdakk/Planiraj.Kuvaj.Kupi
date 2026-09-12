@@ -24,7 +24,7 @@ export function useMeals(planId: string | undefined) {
 
 export function useMeal(id: string) {
   return useQuery({
-    queryKey: ['meal', id],
+    queryKey: queryKeys.meal(id),
     queryFn: () => mealRepository.findById(id),
     enabled: !!id,
   });
@@ -47,6 +47,7 @@ export function useCreateMeal() {
   return useMutation({
     mutationFn: (meal: Meal) => mealRepository.insert(meal),
     onSuccess: (_, meal) => {
+      queryClient.invalidateQueries({ queryKey: queryKeys.meal(meal.id) });
       queryClient.invalidateQueries({ queryKey: queryKeys.meals(meal.mealPlanId) });
     },
   });
@@ -58,6 +59,7 @@ export function useUpdateMeal() {
   return useMutation({
     mutationFn: (meal: Meal) => mealRepository.update(meal),
     onSuccess: (_, meal) => {
+      queryClient.invalidateQueries({ queryKey: queryKeys.meal(meal.id) });
       queryClient.invalidateQueries({ queryKey: queryKeys.meals(meal.mealPlanId) });
     },
   });
@@ -69,6 +71,7 @@ export function useDeleteMeal() {
   return useMutation({
     mutationFn: (meal: Meal) => deleteMeal(meal),
     onSuccess: (_, meal) => {
+      queryClient.invalidateQueries({ queryKey: queryKeys.meal(meal.id) });
       queryClient.invalidateQueries({ queryKey: queryKeys.meals(meal.mealPlanId) });
     },
   });

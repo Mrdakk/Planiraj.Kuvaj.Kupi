@@ -1,14 +1,23 @@
 import { StyleSheet, Text, View } from 'react-native';
 import Ionicons from '@expo/vector-icons/Ionicons';
 import { colors, typography, spacing } from '@/constants/theme';
+import { Button } from '@/components/ui/Button';
 
 interface EmptyStateProps {
   title: string;
   message: string;
   icon?: keyof typeof Ionicons.glyphMap;
+  actionTitle?: string;
+  onAction?: () => void;
 }
 
-export function EmptyState({ title, message, icon = 'calendar-outline' }: EmptyStateProps) {
+export function EmptyState({
+  title,
+  message,
+  icon = 'calendar-outline',
+  actionTitle,
+  onAction,
+}: EmptyStateProps) {
   return (
     <View style={styles.container}>
       <View style={styles.iconCircle}>
@@ -16,6 +25,9 @@ export function EmptyState({ title, message, icon = 'calendar-outline' }: EmptyS
       </View>
       <Text style={styles.title}>{title}</Text>
       <Text style={styles.message}>{message}</Text>
+      {actionTitle && onAction ? (
+        <Button title={actionTitle} onPress={onAction} style={styles.action} />
+      ) : null}
     </View>
   );
 }
@@ -47,5 +59,9 @@ const styles = StyleSheet.create({
     color: colors.textSecondary,
     marginTop: spacing.sm,
     textAlign: 'center',
+  },
+  action: {
+    marginTop: spacing.lg,
+    alignSelf: 'stretch',
   },
 });

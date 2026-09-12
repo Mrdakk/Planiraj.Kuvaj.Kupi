@@ -5,6 +5,7 @@ import { AppSheet } from '@/components/ui/AppSheet';
 import { ListRow } from '@/components/ui/ListRow';
 import { borderRadius, colors, spacing, typography } from '@/constants/theme';
 import { getRecipeEmoji } from '@/constants/emojis';
+import { recipeListSubtitle } from '@/features/recipes/classification';
 import { filterRecipes } from '@/features/recipes/search';
 import type { Recipe } from '@/types';
 
@@ -81,11 +82,7 @@ export function RecipePickerField({
                   <ListRow
                     emoji={getRecipeEmoji(recipe.name, recipe.emoji)}
                     title={recipe.name}
-                    subtitle={
-                      recipe.category
-                        ? `${recipe.category} · ${recipe.baseServings} porc.`
-                        : `${recipe.baseServings} porcije`
-                    }
+                    subtitle={recipeListSubtitle(recipe)}
                     trailing={isSelected ? '✓' : undefined}
                     trailingColor={colors.primary}
                     highlighted={isSelected}

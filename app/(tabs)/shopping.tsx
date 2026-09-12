@@ -3,7 +3,7 @@ import { FlatList, StyleSheet, Text, View } from 'react-native';
 import { useRouter } from 'expo-router';
 import { useQueryClient } from '@tanstack/react-query';
 import { SafeAreaView } from 'react-native-safe-area-context';
-import { colors, typography, spacing } from '@/constants/theme';
+import { colors, typography, spacing, borderRadius } from '@/constants/theme';
 import {
   useShoppingList,
   useShoppingItems,
@@ -15,23 +15,28 @@ import { FabButton } from '@/components/ui/FabButton';
 import { ListRow } from '@/components/ui/ListRow';
 import { ScreenHeader } from '@/components/ui/ScreenHeader';
 import { Button } from '@/components/ui/Button';
+import { AppSheet, SheetFooter } from '@/components/ui/AppSheet';
+import { EmojiBadge } from '@/components/ui/EmojiBadge';
 import { formatAmount } from '@/lib/formatQuantity';
 import { displayIngredientName } from '@/lib/ingredientNames';
 import { getIngredientEmoji } from '@/constants/emojis';
-import { getWeekStart } from '@/features/planner/service';
+import { weekScreenSubtitle } from '@/features/planner/service';
+import { usePlanWeek } from '@/hooks/usePlanWeek';
 import { purchaseCheckedItems } from '@/features/shopping/purchase';
+import { checkedShoppingItems } from '@/features/shopping/service';
 import { queryKeys } from '@/hooks/queryKeys';
 import type { ShoppingItem } from '@/types';
 
 export default function ShoppingScreen() {
   const router = useRouter();
-  const weekStart = getWeekStart(new Date());
+  const { weekStart } = usePlanWeek();
   const { data: list, isLoading: listLoading } = useShoppingList(weekStart);
   const { data: items, isLoading: itemsLoading } = useShoppingItems(list?.id);
   const { data: ingredients } = useIngredients();
   const updateItem = useUpdateShoppingItem();
   const queryClient = useQueryClient();
   const [purchasing, setPurchasing] = useState(false);
+  const [confirmPurchase, setConfirmPurchase] = useState(false);
 
   const ingredientMap = useMemo(
     () => new Map(ingredients?.map((i) => [i.id, i]) ?? []),
@@ -58,16 +63,17 @@ export default function ShoppingScreen() {
     });
   };
 
-  const checkedCount = useMemo(
-    () => (items ?? []).filter((item) => item.isChecked).length,
+  const checkedItems = useMemo(
+    () => checkedShoppingItems(items ?? []),
     [items]
   );
+  const checkedCount = checkedItems.length;
 
   const handlePurchase = async () => {
-    if (!items || checkedCount === 0 || purchasing) return;
+    if (checkedCount === 0 || purchasing) return;
     setPurchasing(true);
     try {
-      await purchaseCheckedItems(items);
+      await purchaseCheckedItems(checkedItems);
       await Promise.all([
         queryClient.invalidateQueries({ queryKey: queryKeys.shoppingLists }),
         queryClient.invalidateQueries({ queryKey: queryKeys.shoppingItems(list?.id ?? '') }),
@@ -75,6 +81,7 @@ export default function ShoppingScreen() {
         queryClient.invalidateQueries({ queryKey: queryKeys.missing }),
         queryClient.invalidateQueries({ queryKey: queryKeys.ingredients }),
       ]);
+      setConfirmPurchase(false);
     } finally {
       setPurchasing(false);
     }
@@ -85,7 +92,7 @@ export default function ShoppingScreen() {
   if (isLoading) {
     return (
       <SafeAreaView style={styles.container} edges={['top']}>
-        <ScreenHeader title="Kupovina" />
+        <ScreenHeader title="Kupovina" subtitle={weekScreenSubtitle(weekStart)} />
         <Text style={styles.loading}>Učitavanje...</Text>
       </SafeAreaView>
     );
@@ -93,7 +100,7 @@ export default function ShoppingScreen() {
 
   return (
     <SafeAreaView style={styles.container} edges={['top']}>
-      <ScreenHeader title="Kupovina" />
+      <ScreenHeader title="Kupovina" subtitle={weekScreenSubtitle(weekStart)} />
 
       {groupedItems.length === 0 ? (
         <EmptyState
@@ -121,7 +128,7 @@ export default function ShoppingScreen() {
                     showCheck
                     checked={item.isChecked}
                     onToggleCheck={() => handleToggle(item)}
-                    onPress={() => handleToggle(item)}
+                    onPress={() => router.push(`/shopping/${item.id}`)}
                   />
                 );
               })}
@@ -133,15 +140,46 @@ export default function ShoppingScreen() {
       {checkedCount > 0 ? (
         <View style={styles.barWrap}>
           <Button
-            title={purchasing ? 'Učitavanje...' : `Kupljeno (${checkedCount})`}
-            onPress={handlePurchase}
-            loading={purchasing}
-            disabled={purchasing}
+            title={`Kupljeno (${checkedCount})`}
+            onPress={() => setConfirmPurchase(true)}
           />
         </View>
       ) : null}
 
       <FabButton title="+ Dodaj stavku" onPress={() => router.push('/shopping/create')} />
+
+      <AppSheet
+        visible={confirmPurchase}
+        onClose={() => !purchasing && setConfirmPurchase(false)}
+        title="Potvrdi kupovinu"
+        subtitle="Ovo ide u kuhinju i skida se sa liste."
+        icon="cart-outline"
+        footer={
+          <SheetFooter
+            confirmLabel="Potvrdi kupovinu"
+            onConfirm={handlePurchase}
+            onCancel={() => setConfirmPurchase(false)}
+            loading={purchasing}
+            confirmDisabled={purchasing || checkedCount === 0}
+          />
+        }
+      >
+        {checkedItems.map((item) => {
+          const ingredient = ingredientMap.get(item.ingredientId ?? '');
+          const name = displayIngredientName(ingredient?.name ?? item.name);
+          return (
+            <View key={item.id} style={styles.previewRow}>
+              <EmojiBadge
+                emoji={getIngredientEmoji(name, ingredient?.category ?? item.category, ingredient?.emoji)}
+                name={name}
+                size={40}
+              />
+              <Text style={styles.previewName}>{name}</Text>
+              <Text style={styles.previewAmount}>{formatAmount(item.quantity, item.unit)}</Text>
+            </View>
+          );
+        })}
+      </AppSheet>
     </SafeAreaView>
   );
 }
@@ -175,5 +213,25 @@ const styles = StyleSheet.create({
     paddingHorizontal: spacing.lg,
     paddingTop: spacing.lg,
     paddingBottom: spacing.sm,
+  },
+  previewRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: spacing.sm,
+    backgroundColor: colors.background,
+    borderRadius: borderRadius.lg,
+    padding: spacing.md,
+  },
+  previewName: {
+    ...typography.bodySmall,
+    color: colors.text,
+    fontWeight: '600',
+    flex: 1,
+    minWidth: 0,
+  },
+  previewAmount: {
+    ...typography.bodySmall,
+    color: colors.textSecondary,
+    fontWeight: '600',
   },
 });
