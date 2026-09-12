@@ -1,5 +1,5 @@
 import { useMemo, useState } from 'react';
-import { FlatList, StyleSheet, Text, TextInput, View } from 'react-native';
+import { SectionList, StyleSheet, Text, TextInput, View } from 'react-native';
 import { useRouter } from 'expo-router';
 import { ChipRow } from '@/components/ui/ChipRow';
 import { EmptyState } from '@/components/ui/EmptyState';
@@ -8,7 +8,7 @@ import { borderRadius, colors, spacing, typography } from '@/constants/theme';
 import { getRecipeEmoji } from '@/constants/emojis';
 import { mealTypes, type MealType } from '@/constants/categories';
 import { recipeListSubtitle } from '@/features/recipes/classification';
-import { browseRecipes } from '@/features/recipes/search';
+import { browseRecipes, groupRecipesByMealType } from '@/features/recipes/search';
 import { isCreatedToday } from '@/lib/dates';
 import type { Recipe } from '@/types';
 
@@ -38,6 +38,12 @@ export function RecipeBrowseList({
     () => browseRecipes(source, search, mealType),
     [source, search, mealType]
   );
+  const sections = useMemo(() => {
+    const groups = mealType
+      ? [{ type: mealType, recipes: visible }]
+      : groupRecipesByMealType(visible);
+    return groups.map((group) => ({ title: group.type, data: group.recipes }));
+  }, [mealType, visible]);
 
   if (source.length === 0) {
     return (
@@ -68,10 +74,14 @@ export function RecipeBrowseList({
       {visible.length === 0 ? (
         <Text style={styles.empty}>Nema recepta za ovu pretragu.</Text>
       ) : (
-        <FlatList
-          data={visible}
-          keyExtractor={(item) => item.id}
+        <SectionList
+          sections={sections}
+          keyExtractor={(item, index) => `${item.id}-${index}`}
           contentContainerStyle={styles.list}
+          stickySectionHeadersEnabled
+          renderSectionHeader={({ section }) => (
+            <Text style={styles.sectionTitle}>{section.title}</Text>
+          )}
           ItemSeparatorComponent={() => <View style={styles.separator} />}
           renderItem={({ item }) => (
             <ListRow
@@ -110,6 +120,17 @@ const styles = StyleSheet.create({
   },
   list: {
     paddingBottom: 96,
+  },
+  sectionTitle: {
+    ...typography.caption,
+    color: colors.success,
+    fontWeight: '700',
+    letterSpacing: 0.8,
+    textTransform: 'uppercase',
+    backgroundColor: colors.background,
+    paddingHorizontal: spacing.lg,
+    paddingTop: spacing.lg,
+    paddingBottom: spacing.sm,
   },
   separator: {
     height: 1,

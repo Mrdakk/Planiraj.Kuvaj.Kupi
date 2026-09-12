@@ -124,6 +124,7 @@ export function DateField({
           mode="date"
           display={Platform.OS === 'android' ? 'calendar' : 'default'}
           minimumDate={minDate}
+          themeVariant="light"
           onValueChange={handleValueChange}
           onDismiss={() => setOpen(false)}
         />
@@ -147,6 +148,7 @@ export function DateField({
             minimumDate={minDate}
             onValueChange={handleValueChange}
             locale="sr-RS"
+            themeVariant="light"
             style={styles.iosPicker}
           />
         </AppSheet>

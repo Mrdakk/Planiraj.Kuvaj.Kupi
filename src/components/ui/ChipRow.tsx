@@ -8,6 +8,7 @@ interface ChipRowProps {
   allLabel?: string;
   allowDeselect?: boolean;
   padded?: boolean;
+  compact?: boolean;
   labelFor?: (item: string) => string;
   isMuted?: (item: string) => boolean;
 }
@@ -19,6 +20,7 @@ export function ChipRow({
   allLabel,
   allowDeselect,
   padded = true,
+  compact = false,
   labelFor,
   isMuted,
 }: ChipRowProps) {
@@ -33,9 +35,9 @@ export function ChipRow({
         {allLabel ? (
           <Pressable
             onPress={() => onSelect(null)}
-            style={[styles.chip, selected === null && styles.chipActive]}
+            style={[styles.chip, compact && styles.chipCompact, selected === null && styles.chipActive]}
           >
-            <Text style={[styles.chipText, selected === null && styles.chipTextActive]}>
+            <Text style={[styles.chipText, compact && styles.chipTextCompact, selected === null && styles.chipTextActive]}>
               {allLabel}
             </Text>
           </Pressable>
@@ -49,6 +51,7 @@ export function ChipRow({
               onPress={() => onSelect(active && canDeselect ? null : item)}
               style={[
                 styles.chip,
+                compact && styles.chipCompact,
                 muted && styles.chipMuted,
                 active && (muted ? styles.chipMutedActive : styles.chipActive),
               ]}
@@ -56,6 +59,7 @@ export function ChipRow({
               <Text
                 style={[
                   styles.chipText,
+                  compact && styles.chipTextCompact,
                   muted && styles.chipTextMuted,
                   active && styles.chipTextActive,
                 ]}
@@ -88,11 +92,21 @@ const styles = StyleSheet.create({
   chip: {
     paddingVertical: spacing.sm,
     paddingHorizontal: spacing.md,
-    backgroundColor: '#F5F5F4',
+    backgroundColor: colors.surface,
     borderRadius: borderRadius.full,
     borderWidth: 1,
     borderColor: colors.border,
     alignSelf: 'center',
+  },
+  chipCompact: {
+    paddingVertical: 6,
+    paddingHorizontal: spacing.md,
+    borderWidth: 0,
+    backgroundColor: colors.surfaceRaised,
+  },
+  chipTextCompact: {
+    fontSize: 13,
+    lineHeight: 18,
   },
   chipActive: {
     backgroundColor: colors.primary,
@@ -104,15 +118,15 @@ const styles = StyleSheet.create({
     fontWeight: '500',
   },
   chipTextActive: {
-    color: '#fff',
+    color: colors.onPrimary,
   },
   chipMuted: {
-    backgroundColor: '#E7E5E4',
-    borderColor: '#D6D3D1',
+    backgroundColor: colors.surfaceRaised,
+    borderColor: colors.border,
   },
   chipMutedActive: {
-    backgroundColor: '#A8A29E',
-    borderColor: '#A8A29E',
+    backgroundColor: colors.textMuted,
+    borderColor: colors.textMuted,
   },
   chipTextMuted: {
     color: colors.textMuted,

@@ -36,7 +36,7 @@ export function ScreenHeader({
       ) : null}
       {onAdd ? (
         <Pressable onPress={onAdd} style={styles.iconButton} hitSlop={12}>
-          <Ionicons name="add" size={26} color={colors.surface} />
+          <Ionicons name="add" size={26} color={colors.onPrimary} />
         </Pressable>
       ) : null}
     </View>

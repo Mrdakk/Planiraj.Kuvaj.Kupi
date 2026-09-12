@@ -3,11 +3,25 @@ import { Stack } from 'expo-router';
 import { StatusBar } from 'expo-status-bar';
 import { SafeAreaProvider } from 'react-native-safe-area-context';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
+import { useFonts } from 'expo-font';
+import * as SplashScreen from 'expo-splash-screen';
+import {
+  Fraunces_600SemiBold,
+  Fraunces_700Bold,
+} from '@expo-google-fonts/fraunces';
+import {
+  SourceSans3_400Regular,
+  SourceSans3_500Medium,
+  SourceSans3_600SemiBold,
+  SourceSans3_700Bold,
+} from '@expo-google-fonts/source-sans-3';
 import { useNetworkStatus } from '@/hooks/useNetworkStatus';
 import { getDatabase } from '@/database';
 import { getHouseholdState } from '@/features/household/state';
 import { OnboardingScreen } from '@/features/household/OnboardingScreen';
-import { colors } from '@/constants/theme';
+import { colors, fonts } from '@/constants/theme';
+
+SplashScreen.preventAutoHideAsync();
 
 const queryClient = new QueryClient({
   defaultOptions: {
@@ -20,7 +34,17 @@ const queryClient = new QueryClient({
 
 export default function RootLayout() {
   const [gate, setGate] = useState<'loading' | 'onboarding' | 'app'>('loading');
+  const [fontsLoaded, fontError] = useFonts({
+    Fraunces_700Bold,
+    Fraunces_600SemiBold,
+    SourceSans3_400Regular,
+    SourceSans3_500Medium,
+    SourceSans3_600SemiBold,
+    SourceSans3_700Bold,
+  });
   useNetworkStatus();
+
+  const fontsReady = fontsLoaded || !!fontError;
 
   useEffect(() => {
     getDatabase()
@@ -32,7 +56,13 @@ export default function RootLayout() {
       });
   }, []);
 
-  if (gate === 'loading') {
+  useEffect(() => {
+    if (fontsReady && gate !== 'loading') {
+      SplashScreen.hideAsync();
+    }
+  }, [fontsReady, gate]);
+
+  if (!fontsReady || gate === 'loading') {
     return (
       <SafeAreaProvider>
         <StatusBar style="dark" />
@@ -58,6 +88,11 @@ export default function RootLayout() {
           screenOptions={{
             headerStyle: { backgroundColor: colors.background },
             headerTintColor: colors.text,
+            headerShadowVisible: false,
+            headerTitleStyle: {
+              fontFamily: fonts.bodySemi,
+              color: colors.text,
+            },
             contentStyle: { backgroundColor: colors.background },
           }}
         >

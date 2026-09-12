@@ -89,9 +89,9 @@ export default function AddToPlanScreen() {
 
         <Text style={styles.label}>Tip obroka</Text>
         <View style={styles.pickerContainer}>
-          <Picker selectedValue={mealType} onValueChange={(value) => setMealType(value as MealType)}>
+          <Picker dropdownIconColor={colors.text} style={{ color: colors.text }} selectedValue={mealType} onValueChange={(value) => setMealType(value as MealType)}>
             {mealTypes.map((type) => (
-              <Picker.Item key={type} label={type} value={type} />
+              <Picker.Item color={colors.text} key={type} label={type} value={type} />
             ))}
           </Picker>
         </View>

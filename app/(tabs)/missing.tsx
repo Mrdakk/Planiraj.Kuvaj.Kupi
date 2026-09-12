@@ -429,7 +429,7 @@ const styles = StyleSheet.create({
     color: colors.text,
   },
   toggleTextActive: {
-    color: '#fff',
+    color: colors.onPrimary,
   },
   list: {
     paddingBottom: spacing.xxxl,
@@ -493,7 +493,7 @@ const styles = StyleSheet.create({
   },
   barText: {
     ...typography.button,
-    color: '#fff',
+    color: colors.onPrimary,
   },
   conflictActions: {
     gap: spacing.sm,

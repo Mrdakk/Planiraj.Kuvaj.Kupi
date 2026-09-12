@@ -16,13 +16,13 @@ const VARIANT_STYLE: Record<
   danger: {
     icon: 'trash-outline',
     iconColor: colors.danger,
-    iconBackground: '#FEE2E2',
+    iconBackground: colors.dangerSoft,
     confirmVariant: 'danger',
   },
   success: {
     icon: 'checkmark-circle-outline',
     iconColor: colors.success,
-    iconBackground: '#DCFCE7',
+    iconBackground: colors.successSoft,
     confirmVariant: 'primary',
   },
   warning: {

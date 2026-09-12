@@ -115,10 +115,10 @@ const styles = StyleSheet.create({
     opacity: 0.7,
   },
   highlighted: {
-    backgroundColor: colors.surfaceAlt,
+    backgroundColor: colors.surfaceRaised,
   },
   emptyStock: {
-    backgroundColor: '#FEF2F2',
+    backgroundColor: colors.dangerSoft,
   },
   dayCol: {
     width: 86,

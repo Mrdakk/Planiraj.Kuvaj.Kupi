@@ -92,9 +92,9 @@ export default function EditShoppingItemScreen() {
           <View style={styles.half}>
             <Text style={styles.label}>Jedinica</Text>
             <View style={styles.pickerContainer}>
-              <Picker selectedValue={unit} onValueChange={(value) => setUnit(value as Unit)}>
+              <Picker dropdownIconColor={colors.text} style={{ color: colors.text }} selectedValue={unit} onValueChange={(value) => setUnit(value as Unit)}>
                 {allUnits.map((option) => (
-                  <Picker.Item key={option} label={option} value={option} />
+                  <Picker.Item color={colors.text} key={option} label={option} value={option} />
                 ))}
               </Picker>
             </View>

@@ -18,7 +18,7 @@ const styles = StyleSheet.create({
   },
   text: {
     ...typography.caption,
-    color: '#fff',
+    color: colors.onPrimary,
     fontWeight: '700',
     letterSpacing: 0.4,
   },

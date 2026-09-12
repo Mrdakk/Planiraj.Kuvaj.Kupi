@@ -172,12 +172,14 @@ export function RecipeForm({
       <Text style={styles.label}>Tip jela</Text>
       <View style={styles.pickerContainer}>
         <Picker
+          dropdownIconColor={colors.text}
+          style={{ color: colors.text }}
           selectedValue={form.dishType}
           onValueChange={(value) => updateField('dishType', value as DishType | '')}
         >
-          <Picker.Item label="Nije izabrano" value="" />
+          <Picker.Item color={colors.text} label="Nije izabrano" value="" />
           {dishTypes.map((type) => (
-            <Picker.Item key={type} label={type} value={type} />
+            <Picker.Item color={colors.text} key={type} label={type} value={type} />
           ))}
         </Picker>
       </View>
@@ -224,11 +226,13 @@ export function RecipeForm({
               <Text style={styles.label}>Jedinica</Text>
               <View style={styles.pickerContainer}>
                 <Picker
+                  dropdownIconColor={colors.text}
+                  style={{ color: colors.text }}
                   selectedValue={ingredient.unit}
                   onValueChange={(value) => updateIngredient(index, 'unit', value as Unit)}
                 >
                   {allUnits.map((unit) => (
-                    <Picker.Item key={unit} label={unit} value={unit} />
+                    <Picker.Item color={colors.text} key={unit} label={unit} value={unit} />
                   ))}
                 </Picker>
               </View>

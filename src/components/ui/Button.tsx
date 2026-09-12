@@ -24,16 +24,16 @@ export function Button({
 }: ButtonProps) {
   const backgroundColor = {
     primary: colors.primary,
-    secondary: '#F5F5F4',
+    secondary: colors.surfaceRaised,
     danger: colors.danger,
-    ghost: 'transparent',
+    ghost: colors.surface,
   }[variant];
 
   const textColor = {
-    primary: '#fff',
+    primary: colors.onPrimary,
     secondary: colors.text,
-    danger: '#fff',
-    ghost: colors.primary,
+    danger: colors.onPrimary,
+    ghost: colors.text,
   }[variant];
 
   return (
@@ -42,6 +42,7 @@ export function Button({
       disabled={disabled || loading}
       style={({ pressed }) => [
         styles.button,
+        variant === 'ghost' && styles.ghost,
         { backgroundColor, opacity: pressed || disabled ? 0.7 : 1 },
         style,
       ]}
@@ -62,6 +63,10 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
     minHeight: 48,
     flexDirection: 'row',
+  },
+  ghost: {
+    borderWidth: 1,
+    borderColor: colors.border,
   },
   text: {
     ...typography.button,

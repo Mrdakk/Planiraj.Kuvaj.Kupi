@@ -70,7 +70,7 @@ const styles = StyleSheet.create({
     width: 40,
     height: 40,
     borderRadius: 20,
-    backgroundColor: colors.surfaceAlt,
+    backgroundColor: colors.surfaceRaised,
     alignItems: 'center',
     justifyContent: 'center',
   },

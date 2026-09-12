@@ -191,9 +191,9 @@ export default function PantryItemDetailScreen() {
             <View style={styles.half}>
               <Text style={styles.label}>Jedinica</Text>
               <View style={styles.pickerContainer}>
-                <Picker selectedValue={unit} onValueChange={(value) => setUnit(value as Unit)}>
+                <Picker dropdownIconColor={colors.text} style={{ color: colors.text }} selectedValue={unit} onValueChange={(value) => setUnit(value as Unit)}>
                   {allUnits.map((u) => (
-                    <Picker.Item key={u} label={u} value={u} />
+                    <Picker.Item color={colors.text} key={u} label={u} value={u} />
                   ))}
                 </Picker>
               </View>

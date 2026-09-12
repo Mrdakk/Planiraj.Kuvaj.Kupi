@@ -13,10 +13,10 @@ export function FabButton({
 }) {
   return (
     <View style={styles.wrap} pointerEvents="box-none">
+      {children}
       <Pressable onPress={onPress} style={({ pressed }) => [styles.fab, pressed && styles.pressed]}>
         <Text style={styles.text}>{title}</Text>
       </Pressable>
-      {children}
     </View>
   );
 }
@@ -42,6 +42,6 @@ const styles = StyleSheet.create({
   },
   text: {
     ...typography.button,
-    color: '#fff',
+    color: colors.onPrimary,
   },
 });

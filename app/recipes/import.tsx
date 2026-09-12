@@ -77,7 +77,7 @@ export default function ImportRecipeScreen() {
           {preview.ingredients.map((item, index) => {
             const name = displayIngredientName(item.rawName);
             return (
-              <Card key={`${item.rawName}-${index}`} style={styles.ingredientCard}>
+              <Card key={`${item.rawName}-${index}`} tone="bone" style={styles.ingredientCard}>
                 <View style={styles.ingredientRow}>
                   <EmojiBadge emoji={getIngredientEmoji(name)} size={36} name={name} />
                   <View style={styles.ingredientBody}>
@@ -95,12 +95,14 @@ export default function ImportRecipeScreen() {
           {preview.steps.length > 0 ? (
             <>
               <Text style={styles.sectionTitle}>Koraci pripreme</Text>
+            <Card tone="bone">
               {preview.steps.map((step, index) => (
                 <View key={index} style={styles.stepRow}>
                   <Text style={styles.stepNumber}>{index + 1}.</Text>
                   <Text style={styles.stepText}>{step}</Text>
                 </View>
               ))}
+            </Card>
             </>
           ) : null}
 
@@ -208,16 +210,16 @@ const styles = StyleSheet.create({
   },
   ingredientName: {
     ...typography.h3,
-    color: colors.text,
+    color: colors.textOnLight,
   },
   ingredientQuantity: {
     ...typography.body,
-    color: colors.textSecondary,
+    color: colors.textOnLightMuted,
     marginTop: spacing.xs,
   },
   note: {
     ...typography.bodySmall,
-    color: colors.textMuted,
+    color: colors.textOnLightMuted,
     marginTop: spacing.xs,
   },
   stepRow: {
@@ -231,7 +233,7 @@ const styles = StyleSheet.create({
   },
   stepText: {
     ...typography.body,
-    color: colors.text,
+    color: colors.textOnLight,
     flex: 1,
   },
   actions: {

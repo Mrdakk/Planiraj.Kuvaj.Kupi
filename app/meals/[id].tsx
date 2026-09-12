@@ -307,7 +307,7 @@ export default function MealDetailScreen() {
             {cookView.ingredients.map((item) => {
               const ingredient = ingredientById.get(item.ingredientId);
               return (
-                <Card key={item.id} style={styles.ingredientCard}>
+                <Card key={item.id} tone="bone" style={styles.ingredientCard}>
                   <View style={styles.ingredientRow}>
                     <EmojiBadge
                       emoji={getIngredientEmoji(
@@ -337,12 +337,14 @@ export default function MealDetailScreen() {
         {cookView.steps.length > 0 ? (
           <View style={styles.section}>
             <Text style={styles.sectionTitle}>Koraci pripreme</Text>
-            {cookView.steps.map((step, index) => (
-              <View key={index} style={styles.stepRow}>
-                <Text style={styles.stepNumber}>{index + 1}.</Text>
-                <Text style={styles.stepText}>{step}</Text>
-              </View>
-            ))}
+            <Card tone="bone">
+              {cookView.steps.map((step, index) => (
+                <View key={index} style={styles.stepRow}>
+                  <Text style={styles.stepNumber}>{index + 1}.</Text>
+                  <Text style={styles.stepTextOnLight}>{step}</Text>
+                </View>
+              ))}
+            </Card>
           </View>
         ) : null}
 
@@ -667,16 +669,16 @@ const styles = StyleSheet.create({
   },
   ingredientName: {
     ...typography.h3,
-    color: colors.text,
+    color: colors.textOnLight,
   },
   ingredientQuantity: {
     ...typography.body,
-    color: colors.textSecondary,
+    color: colors.textOnLightMuted,
     marginTop: spacing.xs,
   },
   ingredientNote: {
     ...typography.bodySmall,
-    color: colors.textMuted,
+    color: colors.textOnLightMuted,
     marginTop: spacing.xs,
   },
   stepRow: {
@@ -691,6 +693,11 @@ const styles = StyleSheet.create({
   stepText: {
     ...typography.body,
     color: colors.text,
+    flex: 1,
+  },
+  stepTextOnLight: {
+    ...typography.body,
+    color: colors.textOnLight,
     flex: 1,
   },
   actions: {
@@ -734,13 +741,13 @@ const styles = StyleSheet.create({
     gap: 6,
   },
   qtyPill: {
-    backgroundColor: '#FEE2E2',
+    backgroundColor: colors.dangerSoft,
     borderRadius: borderRadius.full,
     paddingHorizontal: spacing.sm,
     paddingVertical: 4,
   },
   qtyPillMuted: {
-    backgroundColor: '#F5F5F4',
+    backgroundColor: colors.surfaceRaised,
   },
   previewQuantity: {
     ...typography.caption,
@@ -755,7 +762,7 @@ const styles = StyleSheet.create({
     paddingHorizontal: spacing.sm,
     paddingVertical: 4,
     borderRadius: borderRadius.full,
-    backgroundColor: colors.surfaceAlt,
+    backgroundColor: colors.surfaceRaised,
   },
   partialLink: {
     ...typography.caption,

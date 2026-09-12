@@ -87,6 +87,7 @@ export default function PlanScreen() {
           if (item) setSelectedDate(item);
         }}
         allowDeselect={false}
+        compact
         labelFor={weekDayChipLabel}
         isMuted={isPastDay}
       />
@@ -120,7 +121,12 @@ export default function PlanScreen() {
       )}
 
       <FabButton title="+ Dodaj obrok" onPress={() => router.push('/meals/create')}>
-        <Button title="Predloži obrok" variant="secondary" onPress={() => setSuggestOpen(true)} />
+        <Button
+          title="Predloži obrok"
+          variant="ghost"
+          onPress={() => setSuggestOpen(true)}
+          style={styles.suggestButton}
+        />
       </FabButton>
       <SuggestMealSheet
         visible={suggestOpen}
@@ -153,38 +159,36 @@ function MealTypeGroup({
   return (
     <View style={styles.group}>
       <Text style={styles.groupLabel}>{type}</Text>
-      <View style={styles.groupCardShadow}>
-        <View style={styles.groupCard}>
-        {meals.map((meal, index) => {
-          const recipe = recipeMap.get(meal.recipeId);
-          const name = recipe?.name ?? 'Recept';
-          return (
-            <View key={meal.id}>
-              {index > 0 ? <View style={styles.rowDivider} /> : null}
-              <Pressable
-                onPress={() => onOpenMeal(meal.id)}
-                style={({ pressed }) => [
-                  styles.mealRow,
-                  { backgroundColor: pressed ? mealSurfacePressed(meal.isCooked) : mealSurface(meal.isCooked) },
-                ]}
-              >
-                <EmojiBadge emoji={getRecipeEmoji(name, recipe?.emoji)} size={44} name={name} />
-                <View style={styles.mealBody}>
-                  <View style={styles.mealTitleRow}>
-                    <Text style={styles.mealTitle} numberOfLines={1}>
-                      {name}
-                    </Text>
-                    {isCreatedToday(recipe?.createdAt) ? <NewBadge /> : null}
-                  </View>
-                  <Text style={styles.mealMeta}>{formatServings(meal.servings)}</Text>
-                </View>
-                <Ionicons name="chevron-forward" size={18} color={colors.textMuted} />
-              </Pressable>
+      {meals.map((meal) => {
+        const recipe = recipeMap.get(meal.recipeId);
+        const name = recipe?.name ?? 'Recept';
+        return (
+          <Pressable
+            key={meal.id}
+            onPress={() => onOpenMeal(meal.id)}
+            style={({ pressed }) => [
+              styles.mealCard,
+              { backgroundColor: pressed ? mealSurfacePressed(meal.isCooked) : mealSurface(meal.isCooked) },
+            ]}
+          >
+            <View style={styles.mealBody}>
+              <View style={styles.mealTitleRow}>
+                <Text style={styles.mealTitle} numberOfLines={2}>
+                  {name}
+                </Text>
+                {isCreatedToday(recipe?.createdAt) ? <NewBadge /> : null}
+              </View>
+              <Text style={styles.mealMeta}>{formatServings(meal.servings)}</Text>
             </View>
-          );
-        })}
-      </View>
-      </View>
+            <EmojiBadge
+              emoji={getRecipeEmoji(name, recipe?.emoji)}
+              size={72}
+              name={name}
+              shape="rounded"
+            />
+          </Pressable>
+        );
+      })}
     </View>
   );
 }
@@ -206,33 +210,35 @@ function WeekHeader({
     <View style={styles.header}>
       <Text style={styles.title}>Nedelja</Text>
       <View style={styles.weekNav}>
-        <Pressable
-          onPress={onPrev}
-          hitSlop={8}
-          accessibilityLabel="Prethodna nedelja"
-          style={({ pressed }) => [styles.weekNavArrow, pressed && styles.weekNavArrowPressed]}
-        >
-          <Ionicons name="chevron-back" size={22} color={colors.primary} />
-        </Pressable>
+        <View style={styles.weekRange}>
+          <Pressable
+            onPress={onPrev}
+            hitSlop={8}
+            accessibilityLabel="Prethodna nedelja"
+            style={({ pressed }) => [styles.weekNavArrow, pressed && styles.weekNavArrowPressed]}
+          >
+            <Ionicons name="chevron-back" size={20} color={colors.text} />
+          </Pressable>
+          <Text style={styles.weekNavTitle}>{formatWeekNavRange(weekStart)}</Text>
+          <Pressable
+            onPress={onNext}
+            hitSlop={8}
+            accessibilityLabel="Sledeća nedelja"
+            style={({ pressed }) => [styles.weekNavArrow, pressed && styles.weekNavArrowPressed]}
+          >
+            <Ionicons name="chevron-forward" size={20} color={colors.text} />
+          </Pressable>
+        </View>
         <Pressable
           onPress={onToday}
           disabled={isThisWeek}
           accessibilityLabel={isThisWeek ? 'Ova nedelja' : 'Nazad na ovu nedelju'}
           accessibilityHint={formatWeekRange(weekStart)}
-          style={styles.weekNavCenter}
+          style={[styles.thisWeekPill, !isThisWeek && styles.thisWeekPillAction]}
         >
-          <Text style={styles.weekNavTitle}>{isThisWeek ? 'Ova nedelja' : formatWeekNavRange(weekStart)}</Text>
-          <Text style={[styles.weekNavSubtitle, !isThisWeek && styles.weekNavAction]}>
-            {isThisWeek ? formatWeekNavRange(weekStart) : 'Nazad na ovu nedelju'}
+          <Text style={[styles.thisWeekPillText, !isThisWeek && styles.thisWeekPillTextAction]}>
+            Ova nedelja
           </Text>
-        </Pressable>
-        <Pressable
-          onPress={onNext}
-          hitSlop={8}
-          accessibilityLabel="Sledeća nedelja"
-          style={({ pressed }) => [styles.weekNavArrow, pressed && styles.weekNavArrowPressed]}
-        >
-          <Ionicons name="chevron-forward" size={22} color={colors.primary} />
         </Pressable>
       </View>
     </View>
@@ -257,43 +263,47 @@ const styles = StyleSheet.create({
   weekNav: {
     flexDirection: 'row',
     alignItems: 'center',
-    backgroundColor: colors.surface,
-    borderRadius: borderRadius.xl,
-    borderWidth: 1,
-    borderColor: colors.border,
-    paddingVertical: spacing.sm,
-    paddingHorizontal: spacing.sm,
-    ...shadows.sm,
+    justifyContent: 'space-between',
+    gap: spacing.md,
+  },
+  weekRange: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 2,
+    flexShrink: 1,
   },
   weekNavArrow: {
-    width: 40,
-    height: 40,
-    borderRadius: 20,
-    backgroundColor: colors.surfaceAlt,
+    width: 28,
+    height: 36,
     alignItems: 'center',
     justifyContent: 'center',
   },
   weekNavArrowPressed: {
     opacity: 0.7,
   },
-  weekNavCenter: {
-    flex: 1,
-    alignItems: 'center',
-    paddingHorizontal: spacing.sm,
-  },
   weekNavTitle: {
     ...typography.body,
     color: colors.text,
+    fontWeight: '600',
+  },
+  thisWeekPill: {
+    paddingHorizontal: spacing.md,
+    paddingVertical: spacing.sm,
+    borderRadius: borderRadius.full,
+    backgroundColor: colors.primary,
+  },
+  thisWeekPillAction: {
+    backgroundColor: colors.surface,
+    borderWidth: 1,
+    borderColor: colors.primary,
+  },
+  thisWeekPillText: {
+    ...typography.caption,
+    color: colors.onPrimary,
     fontWeight: '700',
   },
-  weekNavSubtitle: {
-    ...typography.caption,
-    color: colors.textSecondary,
-    marginTop: 1,
-  },
-  weekNavAction: {
+  thisWeekPillTextAction: {
     color: colors.primary,
-    fontWeight: '600',
   },
   loading: {
     ...typography.body,
@@ -309,39 +319,33 @@ const styles = StyleSheet.create({
   },
   group: {
     marginBottom: spacing.lg,
+    gap: spacing.sm,
   },
   groupLabel: {
     ...typography.caption,
-    color: colors.primary,
+    color: colors.success,
     fontWeight: '700',
-    letterSpacing: 0.6,
+    letterSpacing: 0.8,
     textTransform: 'uppercase',
-    marginBottom: spacing.sm,
+    marginBottom: spacing.xs,
     marginLeft: spacing.xs,
   },
-  groupCardShadow: {
-    borderRadius: borderRadius.xl,
-    ...shadows.sm,
-  },
-  groupCard: {
-    borderRadius: borderRadius.xl,
-    overflow: 'hidden',
-  },
-  rowDivider: {
-    height: StyleSheet.hairlineWidth,
-    backgroundColor: colors.border,
-    marginLeft: 72,
-  },
-  mealRow: {
+  mealCard: {
     flexDirection: 'row',
     alignItems: 'center',
-    paddingVertical: spacing.md,
-    paddingHorizontal: spacing.md,
+    paddingVertical: spacing.xl,
+    paddingHorizontal: spacing.lg,
+    minHeight: 112,
     gap: spacing.md,
+    borderRadius: borderRadius.xl,
+    borderWidth: 1,
+    borderColor: colors.border,
+    ...shadows.sm,
   },
   mealBody: {
     flex: 1,
     minWidth: 0,
+    gap: spacing.sm,
   },
   mealTitleRow: {
     flexDirection: 'row',
@@ -349,15 +353,21 @@ const styles = StyleSheet.create({
     gap: spacing.sm,
   },
   mealTitle: {
-    ...typography.body,
+    ...typography.displayTitle,
+    fontSize: 24,
+    lineHeight: 30,
     color: colors.text,
-    fontWeight: '600',
     flex: 1,
     minWidth: 0,
   },
   mealMeta: {
-    ...typography.caption,
+    ...typography.bodySmall,
     color: colors.textSecondary,
-    marginTop: 2,
+  },
+  suggestButton: {
+    alignSelf: 'center',
+    minHeight: 40,
+    paddingHorizontal: spacing.xl,
+    borderRadius: borderRadius.full,
   },
 });

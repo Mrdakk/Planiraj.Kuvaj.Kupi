@@ -7,21 +7,23 @@ export function EmojiBadge({
   emoji,
   size = 44,
   name,
+  shape = 'circle',
 }: {
   emoji: string;
   size?: number;
   name?: string;
+  shape?: 'circle' | 'rounded';
 }) {
   const shaker = name ? getSaltShakerContents(name) : null;
 
   return (
     <View
       style={[
-        styles.circle,
+        styles.badge,
         {
           width: size,
           height: size,
-          borderRadius: size / 2,
+          borderRadius: shape === 'rounded' ? Math.max(12, size * 0.22) : size / 2,
         },
       ]}
     >
@@ -35,7 +37,7 @@ export function EmojiBadge({
 }
 
 const styles = StyleSheet.create({
-  circle: {
+  badge: {
     backgroundColor: colors.surfaceAlt,
     alignItems: 'center',
     justifyContent: 'center',

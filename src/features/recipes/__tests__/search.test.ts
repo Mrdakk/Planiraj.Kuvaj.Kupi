@@ -1,6 +1,7 @@
 import { describe, expect, it } from '@jest/globals';
 import {
   filterRecipes,
+  groupRecipesByMealType,
   recipeMatchesListMealType,
   recipeMatchesSearch,
   sortRecipesByMealType,
@@ -117,5 +118,32 @@ describe('sortRecipesByMealType', () => {
       '6',
       '7',
     ]);
+  });
+});
+
+describe('groupRecipesByMealType', () => {
+  it('puts recipes under every meal type they belong to', () => {
+    expect(
+      groupRecipesByMealType(recipes).map((group) => ({
+        type: group.type,
+        ids: group.recipes.map((recipe) => recipe.id),
+      }))
+    ).toEqual([
+      { type: 'Doručak', ids: ['2'] },
+      { type: 'Užina', ids: ['4'] },
+      { type: 'Ručak', ids: ['1', '5'] },
+      { type: 'Večera', ids: ['5', '3'] },
+      { type: 'Desert', ids: ['6'] },
+      { type: 'Ostalo', ids: ['7'] },
+    ]);
+  });
+
+  it('omits empty meal-type sections', () => {
+    expect(groupRecipesByMealType([recipes[1]]).map((group) => group.type)).toEqual(['Doručak']);
+  });
+
+  it('sorts recipes by name inside a section', () => {
+    const ručak = groupRecipesByMealType(recipes).find((group) => group.type === 'Ručak');
+    expect(ručak?.recipes.map((recipe) => recipe.id)).toEqual(['1', '5']);
   });
 });

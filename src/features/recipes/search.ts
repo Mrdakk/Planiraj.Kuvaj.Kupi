@@ -1,4 +1,5 @@
 import type { MealType } from '@/constants/categories';
+import { mealTypes } from '@/constants/categories';
 import { mealTypeRank, recipeHasMealType } from './classification';
 
 export type RecipeMealType = MealType;
@@ -56,6 +57,41 @@ export function sortRecipesByMealType<T extends RecipeListItem>(recipes: T[]): T
     if (rankDiff !== 0) return rankDiff;
     return foldSearchText(a.name).localeCompare(foldSearchText(b.name));
   });
+}
+
+export type RecipeMealTypeGroup<T> = {
+  type: MealType | 'Ostalo';
+  recipes: T[];
+};
+
+function sortRecipesByName<T extends RecipeListItem>(recipes: T[]): T[] {
+  return [...recipes].sort((a, b) => foldSearchText(a.name).localeCompare(foldSearchText(b.name)));
+}
+
+export function groupRecipesByMealType<T extends RecipeListItem>(
+  recipes: T[]
+): RecipeMealTypeGroup<T>[] {
+  const buckets = new Map<MealType | 'Ostalo', T[]>();
+  for (const type of mealTypes) buckets.set(type, []);
+  buckets.set('Ostalo', []);
+
+  for (const recipe of recipes) {
+    const types = mealTypes.filter((type) => recipeHasMealType(recipe, type));
+    if (types.length === 0) {
+      buckets.get('Ostalo')?.push(recipe);
+      continue;
+    }
+    for (const type of types) {
+      buckets.get(type)?.push(recipe);
+    }
+  }
+
+  return [...mealTypes, 'Ostalo' as const]
+    .map((type) => ({
+      type,
+      recipes: sortRecipesByName(buckets.get(type) ?? []),
+    }))
+    .filter((group) => group.recipes.length > 0);
 }
 
 export function browseRecipes<T extends RecipeListItem>(

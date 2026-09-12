@@ -3,11 +3,12 @@ import { colors, spacing, shadows } from '@/constants/theme';
 
 interface CardProps extends ViewProps {
   children: React.ReactNode;
+  tone?: 'dark' | 'bone';
 }
 
-export function Card({ children, style, ...rest }: CardProps) {
+export function Card({ children, style, tone = 'dark', ...rest }: CardProps) {
   return (
-    <View style={[styles.card, style]} {...rest}>
+    <View style={[styles.card, tone === 'bone' && styles.bone, style]} {...rest}>
       {children}
     </View>
   );
@@ -19,5 +20,8 @@ const styles = StyleSheet.create({
     borderRadius: 16,
     padding: spacing.lg,
     ...shadows.md,
+  },
+  bone: {
+    backgroundColor: colors.surfaceAlt,
   },
 });

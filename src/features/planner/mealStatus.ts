@@ -1,7 +1,7 @@
-export const MEAL_COOKED_SURFACE = '#F0FDF4';
-export const MEAL_PENDING_SURFACE = '#FFF7ED';
-export const MEAL_COOKED_SURFACE_PRESSED = '#DCFCE7';
-export const MEAL_PENDING_SURFACE_PRESSED = '#FFEDD5';
+export const MEAL_COOKED_SURFACE = '#EEF2E8';
+export const MEAL_PENDING_SURFACE = '#FFFBF6';
+export const MEAL_COOKED_SURFACE_PRESSED = '#E2E8D8';
+export const MEAL_PENDING_SURFACE_PRESSED = '#F4EFE6';
 
 export function mealSurface(isCooked: boolean): string {
   return isCooked ? MEAL_COOKED_SURFACE : MEAL_PENDING_SURFACE;
