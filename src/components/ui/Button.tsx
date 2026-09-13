@@ -26,7 +26,7 @@ export function Button({
     primary: colors.primary,
     secondary: colors.surfaceRaised,
     danger: colors.danger,
-    ghost: colors.surface,
+    ghost: 'transparent',
   }[variant];
 
   const textColor = {

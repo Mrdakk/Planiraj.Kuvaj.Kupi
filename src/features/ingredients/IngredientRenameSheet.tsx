@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react';
 import { AppSheet, SheetFooter } from '@/components/ui/AppSheet';
 import { Input } from '@/components/ui/Input';
+import { colors } from '@/constants/theme';
 import { canonicalIngredientName } from '@/lib/ingredientNames';
 
 export function IngredientRenameSheet({
@@ -50,6 +51,7 @@ export function IngredientRenameSheet({
         placeholder="npr. So"
         autoCapitalize="sentences"
         autoCorrect
+        style={{ backgroundColor: colors.sheetField }}
       />
     </AppSheet>
   );

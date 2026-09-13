@@ -58,14 +58,8 @@ export async function resolveOrCreateIngredient(
 
   const normalized = await normalizeIngredientName(canonicalName);
 
-  if (normalized.confidence === 'exact' || normalized.confidence === 'alias') {
-    if (normalized.ingredient) {
-      return { ingredient: normalized.ingredient, isNew: false, aliases: normalized.aliases };
-    }
-  }
-
-  if (normalized.confidence === 'suggested' && normalized.ingredient) {
-    return { ingredient: normalized.ingredient, isNew: false, aliases: [] };
+  if (normalized.confidence === 'exact' && normalized.ingredient) {
+    return { ingredient: normalized.ingredient, isNew: false, aliases: normalized.aliases };
   }
 
   const ingredient: Ingredient = {
@@ -142,10 +136,7 @@ export async function applyRecipeIngredientResolution(
       const canonicalName = canonicalIngredientName(rawName);
       const normalized = await normalizeIngredientName(canonicalName);
       const matched =
-        (normalized.confidence === 'exact' ||
-          normalized.confidence === 'alias' ||
-          normalized.confidence === 'suggested') &&
-        normalized.ingredient
+        normalized.confidence === 'exact' && normalized.ingredient
           ? normalized.ingredient
           : null;
 

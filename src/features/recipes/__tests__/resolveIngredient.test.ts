@@ -43,7 +43,7 @@ const normalize = normalizeIngredientName as unknown as jest.Mock<
   (...args: never[]) => Promise<{
     ingredient: Ingredient | null;
     aliases: string[];
-    confidence: 'exact' | 'alias' | 'suggested' | 'none';
+    confidence: 'exact' | 'alias' | 'none';
   }>
 >;
 
@@ -75,5 +75,34 @@ describe('resolveOrCreateIngredient category', () => {
     expect(ingredients.insert).toHaveBeenCalledWith(
       expect.objectContaining({ category: 'Ostalo' })
     );
+  });
+
+  it('creates a new ingredient instead of merging an alias match', async () => {
+    normalize.mockResolvedValue({
+      ingredient: {
+        id: 'jogurt-id',
+        name: 'Jogurt',
+        category: 'Mlečni proizvodi',
+        defaultUnit: 'g',
+        emoji: null,
+        trackPresence: false,
+        createdAt: '2026-09-01T00:00:00.000Z',
+        updatedAt: '2026-09-01T00:00:00.000Z',
+      },
+      aliases: ['grčki jogurt'],
+      confidence: 'alias',
+    });
+
+    const result = await resolveOrCreateIngredient(
+      'grčki jogurt',
+      'g',
+      'Mlečni proizvodi'
+    );
+
+    expect(ingredients.insert).toHaveBeenCalledWith(
+      expect.objectContaining({ name: 'grčki jogurt' })
+    );
+    expect(result.isNew).toBe(true);
+    expect(result.ingredient.id).not.toBe('jogurt-id');
   });
 });

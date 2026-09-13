@@ -16,6 +16,7 @@ import {
   SourceSans3_700Bold,
 } from '@expo-google-fonts/source-sans-3';
 import { useNetworkStatus } from '@/hooks/useNetworkStatus';
+import { useAutoSync } from '@/hooks/useAutoSync';
 import { getDatabase } from '@/database';
 import { getHouseholdState } from '@/features/household/state';
 import { OnboardingScreen } from '@/features/household/OnboardingScreen';
@@ -84,36 +85,44 @@ export default function RootLayout() {
   return (
     <SafeAreaProvider>
       <QueryClientProvider client={queryClient}>
-        <Stack
-          screenOptions={{
-            headerStyle: { backgroundColor: colors.background },
-            headerTintColor: colors.text,
-            headerShadowVisible: false,
-            headerTitleStyle: {
-              fontFamily: fonts.bodySemi,
-              color: colors.text,
-            },
-            contentStyle: { backgroundColor: colors.background },
-          }}
-        >
-          <Stack.Screen name="(tabs)" options={{ headerShown: false }} />
-          <Stack.Screen name="recipes/index" options={{ title: 'Recepti' }} />
-          <Stack.Screen name="recipes/import" options={{ title: 'Uvoz iz linka' }} />
-          <Stack.Screen name="recipes/create" options={{ title: 'Novi recept' }} />
-          <Stack.Screen name="recipes/edit/[id]" options={{ title: 'Izmeni recept' }} />
-          <Stack.Screen name="recipes/add-to-plan/[id]" options={{ title: 'Dodaj u plan' }} />
-          <Stack.Screen name="favorites" options={{ title: 'Omiljeni recepti' }} />
-          <Stack.Screen name="history" options={{ title: 'Istorija' }} />
-          <Stack.Screen name="settings" options={{ title: 'Podešavanja' }} />
-          <Stack.Screen name="meals/create" options={{ title: 'Dodaj obrok' }} />
-          <Stack.Screen name="meals/edit/[id]" options={{ title: 'Izmeni obrok' }} />
-          <Stack.Screen name="pantry/[id]" options={{ title: 'Namirnica' }} />
-          <Stack.Screen name="pantry/create" options={{ title: 'Dodaj namirnicu' }} />
-          <Stack.Screen name="shopping/create" options={{ title: 'Dodaj stavku' }} />
-          <Stack.Screen name="shopping/[id]" options={{ title: 'Izmeni stavku' }} />
-        </Stack>
+        <AppShell />
         <StatusBar style="dark" />
       </QueryClientProvider>
     </SafeAreaProvider>
+  );
+}
+
+function AppShell() {
+  useAutoSync();
+
+  return (
+    <Stack
+      screenOptions={{
+        headerStyle: { backgroundColor: colors.background },
+        headerTintColor: colors.text,
+        headerShadowVisible: false,
+        headerTitleStyle: {
+          fontFamily: fonts.bodySemi,
+          color: colors.text,
+        },
+        contentStyle: { backgroundColor: colors.background },
+      }}
+    >
+      <Stack.Screen name="(tabs)" options={{ headerShown: false }} />
+      <Stack.Screen name="recipes/index" options={{ title: 'Recepti' }} />
+      <Stack.Screen name="recipes/import" options={{ title: 'Uvoz iz linka' }} />
+      <Stack.Screen name="recipes/create" options={{ title: 'Novi recept' }} />
+      <Stack.Screen name="recipes/edit/[id]" options={{ title: 'Izmeni recept' }} />
+      <Stack.Screen name="recipes/add-to-plan/[id]" options={{ title: 'Dodaj u plan' }} />
+      <Stack.Screen name="favorites" options={{ title: 'Omiljeni recepti' }} />
+      <Stack.Screen name="history" options={{ title: 'Istorija' }} />
+      <Stack.Screen name="settings" options={{ title: 'Podešavanja' }} />
+      <Stack.Screen name="meals/create" options={{ title: 'Dodaj obrok' }} />
+      <Stack.Screen name="meals/edit/[id]" options={{ title: 'Izmeni obrok' }} />
+      <Stack.Screen name="pantry/[id]" options={{ title: 'Namirnica' }} />
+      <Stack.Screen name="pantry/create" options={{ title: 'Dodaj namirnicu' }} />
+      <Stack.Screen name="shopping/create" options={{ title: 'Dodaj stavku' }} />
+      <Stack.Screen name="shopping/[id]" options={{ title: 'Izmeni stavku' }} />
+    </Stack>
   );
 }

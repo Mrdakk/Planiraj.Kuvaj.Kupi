@@ -7,6 +7,8 @@ export const colors = {
   surface: '#FFFBF6',
   surfaceRaised: '#EBE4D8',
   surfaceAlt: '#EFE8DC',
+  sheet: '#FFFFFF',
+  sheetField: '#FFFFFF',
   text: '#2A2118',
   textOnLight: '#2A2118',
   textOnLightMuted: '#6B6158',
@@ -19,7 +21,7 @@ export const colors = {
   dangerSoft: '#F6E4DE',
   warning: '#C45C26',
   info: '#5C6B7A',
-  overlay: 'rgba(42, 33, 24, 0.4)',
+  overlay: 'rgba(42, 33, 24, 0.22)',
 } as const;
 
 export const fonts = {

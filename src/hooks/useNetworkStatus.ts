@@ -8,20 +8,19 @@ export function useNetworkStatus() {
   useEffect(() => {
     let isMounted = true;
 
-    async function check() {
-      const state = await Network.getNetworkStateAsync();
+    void Network.getNetworkStateAsync().then((state) => {
       if (isMounted) {
         setIsOnline(state.isConnected ?? false);
       }
-    }
+    });
 
-    check();
-
-    const interval = setInterval(check, 5000);
+    const subscription = Network.addNetworkStateListener((state) => {
+      setIsOnline(state.isConnected ?? false);
+    });
 
     return () => {
       isMounted = false;
-      clearInterval(interval);
+      subscription.remove();
     };
   }, [setIsOnline]);
 }

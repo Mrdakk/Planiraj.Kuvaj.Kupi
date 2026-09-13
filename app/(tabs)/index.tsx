@@ -8,7 +8,6 @@ import { useMealPlan, useMeals } from '@/hooks/useMealPlans';
 import { useRecipes } from '@/hooks/useRecipes';
 import { ChipRow } from '@/components/ui/ChipRow';
 import { EmptyState } from '@/components/ui/EmptyState';
-import { emptyCta } from '@/components/ui/emptyCta';
 import { FabButton } from '@/components/ui/FabButton';
 import { Button } from '@/components/ui/Button';
 import { EmojiBadge } from '@/components/ui/EmojiBadge';
@@ -115,8 +114,6 @@ export default function PlanScreen() {
           title="Nema obroka za ovaj dan"
           message="Dodaj obrok za izabrani dan."
           icon="restaurant-outline"
-          actionTitle={emptyCta.missing.title}
-          onAction={() => router.push(emptyCta.missing.href)}
         />
       )}
 

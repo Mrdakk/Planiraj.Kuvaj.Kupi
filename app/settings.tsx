@@ -6,7 +6,7 @@ import QRCode from 'react-native-qrcode-svg';
 import { colors, typography, spacing } from '@/constants/theme';
 import { Card } from '@/components/ui/Card';
 import { useAppStore } from '@/store/appStore';
-import { syncEngine } from '@/sync/engine';
+import { autoSync } from '@/sync/runtime';
 import { getHouseholdState } from '@/features/household/state';
 import { buildJoinUrl } from '@/features/household/membership';
 import { networkLabel, syncStatusLabel } from '@/lib/networkCopy';
@@ -52,6 +52,9 @@ export default function SettingsScreen() {
         <Card style={styles.card}>
           <Text style={styles.label}>Sinhronizacija porodice</Text>
           <Text style={styles.value}>{statusLabel}</Text>
+          <Text style={styles.hint}>
+            Izmene se same šalju i preuzimaju. Drugi član porodice ih vidi bez ručnog osvežavanja.
+          </Text>
         </Card>
 
         <Card style={styles.card}>
@@ -59,7 +62,7 @@ export default function SettingsScreen() {
           <Text style={styles.value}>{networkLabel(isOnline)}</Text>
         </Card>
 
-        <Pressable onPress={() => void syncEngine.sync()}>
+        <Pressable onPress={() => void autoSync.runNow()}>
           <Card style={styles.card}>
             <Text style={styles.actionText}>Sinhronizuj sada</Text>
           </Card>

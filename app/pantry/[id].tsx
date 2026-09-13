@@ -264,6 +264,7 @@ export default function PantryItemDetailScreen() {
                       closePicker();
                       setPendingAbsorb(other);
                     }}
+                    plain
                   />
                 </View>
               );
@@ -362,7 +363,7 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     gap: spacing.sm,
-    backgroundColor: colors.background,
+    backgroundColor: colors.sheetField,
     borderRadius: borderRadius.md,
     borderWidth: 1,
     borderColor: colors.border,

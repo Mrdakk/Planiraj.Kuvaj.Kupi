@@ -21,6 +21,7 @@ interface ListRowProps {
   showNew?: boolean;
   highlighted?: boolean;
   emptyStock?: boolean;
+  plain?: boolean;
 }
 
 export function ListRow({
@@ -39,6 +40,7 @@ export function ListRow({
   showNew = false,
   highlighted = false,
   emptyStock = false,
+  plain = false,
 }: ListRowProps) {
   return (
     <Pressable
@@ -46,6 +48,7 @@ export function ListRow({
       disabled={!onPress}
       style={({ pressed }) => [
         styles.row,
+        plain ? styles.plain : null,
         highlighted ? styles.highlighted : null,
         emptyStock ? styles.emptyStock : null,
         pressed && onPress ? styles.pressed : null,
@@ -115,7 +118,10 @@ const styles = StyleSheet.create({
     opacity: 0.7,
   },
   highlighted: {
-    backgroundColor: colors.surfaceRaised,
+    backgroundColor: '#FFF6EC',
+  },
+  plain: {
+    backgroundColor: 'transparent',
   },
   emptyStock: {
     backgroundColor: colors.dangerSoft,

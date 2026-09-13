@@ -73,7 +73,7 @@ const normalize = normalizeIngredientName as unknown as jest.Mock<
   (...args: never[]) => Promise<{
     ingredient: Ingredient | null;
     aliases: string[];
-    confidence: 'exact' | 'alias' | 'suggested' | 'none';
+    confidence: 'exact' | 'none';
   }>
 >;
 

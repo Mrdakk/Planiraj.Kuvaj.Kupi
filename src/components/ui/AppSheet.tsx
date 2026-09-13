@@ -21,7 +21,6 @@ export function AppSheet({
   subtitle,
   icon,
   iconColor = colors.primary,
-  iconBackground = colors.surfaceAlt,
   children,
   footer,
   scrollable = true,
@@ -32,7 +31,6 @@ export function AppSheet({
   subtitle?: string;
   icon?: keyof typeof Ionicons.glyphMap;
   iconColor?: string;
-  iconBackground?: string;
   children?: ReactNode;
   footer?: ReactNode;
   scrollable?: boolean;
@@ -40,7 +38,15 @@ export function AppSheet({
   const insets = useSafeAreaInsets();
 
   return (
-    <Modal visible={visible} transparent animationType="slide" onRequestClose={onClose}>
+    <Modal
+      visible={visible}
+      transparent
+      animationType="slide"
+      onRequestClose={onClose}
+      statusBarTranslucent
+      navigationBarTranslucent
+      presentationStyle="overFullScreen"
+    >
       <KeyboardAvoidingView
         style={styles.flex}
         behavior={Platform.OS === 'ios' ? 'padding' : undefined}
@@ -50,11 +56,7 @@ export function AppSheet({
           <View style={[styles.sheet, { paddingBottom: Math.max(insets.bottom, spacing.lg) }]}>
             <View style={styles.handle} />
             <View style={styles.header}>
-              {icon ? (
-                <View style={[styles.iconWrap, { backgroundColor: iconBackground }]}>
-                  <Ionicons name={icon} size={22} color={iconColor} />
-                </View>
-              ) : null}
+              {icon ? <Ionicons name={icon} size={22} color={iconColor} /> : null}
               <View style={styles.headerText}>
                 <Text style={styles.title}>{title}</Text>
                 {subtitle ? <Text style={styles.subtitle}>{subtitle}</Text> : null}
@@ -96,14 +98,14 @@ export function SheetFooter({
   confirmLabel: string;
   onCancel?: () => void;
   onConfirm: () => void;
-  confirmVariant?: 'primary' | 'danger' | 'secondary';
+  confirmVariant?: 'primary' | 'danger' | 'secondary' | 'ghost';
   loading?: boolean;
   confirmDisabled?: boolean;
 }) {
   return (
     <View style={styles.footer}>
       {onCancel ? (
-        <Button title={cancelLabel} onPress={onCancel} variant="secondary" style={styles.footerButton} />
+        <Button title={cancelLabel} onPress={onCancel} variant="ghost" style={styles.footerButton} />
       ) : null}
       <Button
         title={confirmLabel}
@@ -120,17 +122,19 @@ export function SheetFooter({
 const styles = StyleSheet.create({
   flex: {
     flex: 1,
+    backgroundColor: 'transparent',
   },
   root: {
     flex: 1,
     justifyContent: 'flex-end',
+    backgroundColor: 'transparent',
   },
   backdrop: {
     ...StyleSheet.absoluteFill,
     backgroundColor: colors.overlay,
   },
   sheet: {
-    backgroundColor: colors.surface,
+    backgroundColor: colors.sheet,
     borderTopLeftRadius: borderRadius.xxl,
     borderTopRightRadius: borderRadius.xxl,
     paddingHorizontal: spacing.lg,
@@ -139,28 +143,21 @@ const styles = StyleSheet.create({
   },
   handle: {
     alignSelf: 'center',
-    width: 40,
+    width: 36,
     height: 4,
     borderRadius: borderRadius.full,
-    backgroundColor: colors.border,
+    backgroundColor: '#E8DDD2',
     marginBottom: spacing.md,
   },
   header: {
     flexDirection: 'row',
-    alignItems: 'center',
-    gap: spacing.md,
+    alignItems: 'flex-start',
+    gap: spacing.sm,
     marginBottom: spacing.md,
-  },
-  iconWrap: {
-    width: 44,
-    height: 44,
-    borderRadius: 14,
-    alignItems: 'center',
-    justifyContent: 'center',
   },
   headerText: {
     flex: 1,
-    gap: 2,
+    gap: 4,
   },
   title: {
     ...typography.h3,

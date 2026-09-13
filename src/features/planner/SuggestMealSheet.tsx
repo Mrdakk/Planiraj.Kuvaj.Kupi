@@ -90,7 +90,7 @@ export function SuggestMealSheet({
         ) : (
           <SheetFooter
             confirmLabel="Nazad na filtere"
-            confirmVariant="secondary"
+            confirmVariant="ghost"
             onConfirm={() => setStep('filters')}
           />
         )
@@ -133,6 +133,7 @@ export function SuggestMealSheet({
                 emoji={getRecipeEmoji(item.recipe.name, item.recipe.emoji)}
                 title={item.recipe.name}
                 subtitle={`${missingLabel(item.missingCount)} · ${timeLabel(item.prepTimeMinutes)}`}
+                plain
               />
               <Button
                 title="Izaberi"

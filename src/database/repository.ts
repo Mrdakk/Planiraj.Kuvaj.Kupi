@@ -1,5 +1,6 @@
 import { getDatabase } from './index';
 import type { SQLiteDatabase, SyncStatus, SQLiteSyncQueueRow, SQLiteSyncStateRow } from './types';
+import { notifySyncQueued } from '@/sync/queueEvents';
 
 export { getDatabase };
 export type { SQLiteDatabase };
@@ -169,6 +170,7 @@ export class BaseRepository<T extends { id: string; updatedAt: string }> {
         null,
       ] as (string | number | null)[]
     );
+    notifySyncQueued();
   }
 }
 
