@@ -31,6 +31,9 @@ export default function CreateRecipeScreen() {
         notes: data.notes,
         ingredients: data.ingredients.map((i) => ({
           rawName: i.rawName,
+          ingredientId: i.ingredientId,
+          sourceName: i.sourceName,
+          linkToIngredientId: i.linkToIngredientId,
           quantity: parseQuantity(i.quantity),
           unit: i.unit,
           notes: i.notes,

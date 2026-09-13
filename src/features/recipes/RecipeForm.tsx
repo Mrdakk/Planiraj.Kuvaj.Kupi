@@ -8,9 +8,24 @@ import { Card } from '@/components/ui/Card';
 import { allUnits, type Unit } from '@/constants/units';
 import { dishTypes, mealTypes, type DishType, type MealType } from '@/constants/categories';
 import { colors, spacing, typography } from '@/constants/theme';
+import { IngredientEditActions } from '@/features/ingredients/IngredientEditActions';
+import { IngredientPickerSheet } from '@/features/ingredients/IngredientPickerSheet';
+import { IngredientRenameSheet } from '@/features/ingredients/IngredientRenameSheet';
+import { useIngredients } from '@/hooks/useIngredients';
 import { formatQuantity } from '@/lib/formatQuantity';
-import { canonicalIngredientName } from '@/lib/ingredientNames';
-import type { RecipeWithIngredients } from '@/types';
+import { canonicalIngredientName, displayIngredientName } from '@/lib/ingredientNames';
+import type { Ingredient, RecipeWithIngredients } from '@/types';
+
+export interface RecipeFormIngredient {
+  id?: string;
+  ingredientId?: string;
+  rawName: string;
+  sourceName?: string;
+  linkToIngredientId?: string;
+  quantity: string;
+  unit: Unit;
+  notes: string;
+}
 
 export interface RecipeFormData {
   name: string;
@@ -21,14 +36,7 @@ export interface RecipeFormData {
   dishType: DishType | '';
   steps: string;
   notes: string;
-  ingredients: {
-    id?: string;
-    ingredientId?: string;
-    rawName: string;
-    quantity: string;
-    unit: Unit;
-    notes: string;
-  }[];
+  ingredients: RecipeFormIngredient[];
 }
 
 interface RecipeFormProps {
@@ -44,6 +52,10 @@ export function RecipeForm({
   submitTitle,
   loading,
 }: RecipeFormProps) {
+  const { data: catalog } = useIngredients();
+  const [selectedIndex, setSelectedIndex] = useState<number | null>(null);
+  const [pickerOpen, setPickerOpen] = useState(false);
+  const [renameOpen, setRenameOpen] = useState(false);
   const [form, setForm] = useState<RecipeFormData>(() => {
     if (defaultValues) {
       return {
@@ -55,14 +67,18 @@ export function RecipeForm({
         dishType: defaultValues.dishType ?? '',
         steps: defaultValues.steps.join('\n'),
         notes: defaultValues.notes ?? '',
-        ingredients: defaultValues.ingredients.map((i) => ({
-          id: i.id,
-          ingredientId: i.ingredientId,
-          rawName: canonicalIngredientName(i.ingredientName ?? ''),
-          quantity: formatQuantity(i.quantity),
-          unit: i.unit,
-          notes: i.notes ?? '',
-        })),
+        ingredients: defaultValues.ingredients.map((i) => {
+          const rawName = canonicalIngredientName(i.ingredientName ?? '');
+          return {
+            id: i.id,
+            ingredientId: i.ingredientId,
+            rawName,
+            sourceName: rawName,
+            quantity: formatQuantity(i.quantity),
+            unit: i.unit,
+            notes: i.notes ?? '',
+          };
+        }),
       };
     }
     return {
@@ -78,29 +94,41 @@ export function RecipeForm({
     };
   });
 
+  const selected = selectedIndex !== null ? form.ingredients[selectedIndex] : null;
+
   const updateField = <K extends keyof RecipeFormData,>(field: K, value: RecipeFormData[K]) => {
     setForm((prev) => ({ ...prev, [field]: value }));
   };
 
   const updateIngredient = (
     index: number,
-    field: keyof RecipeFormData['ingredients'][number],
+    field: keyof RecipeFormIngredient,
     value: string
   ) => {
     setForm((prev) => {
       const ingredients = prev.ingredients.map((item, i) => {
         if (i !== index) return item;
-        return { ...item, [field]: value } as typeof item;
+        return { ...item, [field]: value } as RecipeFormIngredient;
       });
       return { ...prev, ingredients };
     });
   };
 
+  const patchIngredient = (index: number, patch: Partial<RecipeFormIngredient>) => {
+    setForm((prev) => ({
+      ...prev,
+      ingredients: prev.ingredients.map((item, i) => (i === index ? { ...item, ...patch } : item)),
+    }));
+  };
+
   const addIngredient = () => {
+    const nextIndex = form.ingredients.length;
     setForm((prev) => ({
       ...prev,
       ingredients: [...prev.ingredients, { rawName: '', quantity: '', unit: 'kom', notes: '' }],
     }));
+    setSelectedIndex(nextIndex);
+    setRenameOpen(true);
   };
 
   const removeIngredient = (index: number) => {
@@ -108,6 +136,34 @@ export function RecipeForm({
       ...prev,
       ingredients: prev.ingredients.filter((_, i) => i !== index),
     }));
+    setSelectedIndex((current) => {
+      if (current === null) return current;
+      if (current === index) return null;
+      if (current > index) return current - 1;
+      return current;
+    });
+  };
+
+  const handleLink = (keep: Ingredient) => {
+    if (selectedIndex === null) return;
+    const current = form.ingredients[selectedIndex];
+    patchIngredient(selectedIndex, {
+      rawName: keep.name,
+      linkToIngredientId: keep.id,
+      sourceName: current?.sourceName || current?.rawName || keep.name,
+    });
+    setSelectedIndex(null);
+  };
+
+  const handleRename = (name: string) => {
+    if (selectedIndex === null) return;
+    const current = form.ingredients[selectedIndex];
+    patchIngredient(selectedIndex, {
+      rawName: name,
+      linkToIngredientId: undefined,
+      sourceName: current?.sourceName || current?.rawName || name,
+    });
+    setSelectedIndex(null);
   };
 
   const toggleMealType = (value: string) => {
@@ -125,6 +181,7 @@ export function RecipeForm({
   };
 
   return (
+    <>
     <ScrollView contentContainerStyle={styles.container}>
       <Input
         label="Naziv recepta"
@@ -202,55 +259,76 @@ export function RecipeForm({
       />
 
       <Text style={styles.sectionTitle}>Sastojci</Text>
+      <Text style={styles.hint}>Dodirni namirnicu za Preimenuj ili Poveži.</Text>
 
-      {form.ingredients.map((ingredient, index) => (
-        <Card key={index} style={styles.ingredientCard}>
-          <Input
-            label="Naziv sastojka"
-            value={ingredient.rawName}
-            onChangeText={(text) => updateIngredient(index, 'rawName', text)}
-            placeholder="npr. pileći file"
-          />
-
-          <View style={styles.row}>
-            <View style={styles.half}>
-              <Input
-                label="Količina"
-                value={ingredient.quantity}
-                onChangeText={(text) => updateIngredient(index, 'quantity', text)}
-                placeholder="npr. 600"
-                keyboardType="numeric"
+      {form.ingredients.map((ingredient, index) => {
+        const name = displayIngredientName(ingredient.rawName);
+        const label = ingredient.rawName.trim() ? name : 'Dodaj naziv';
+        const showActions = selectedIndex === index;
+        return (
+          <Card key={ingredient.id ?? index} style={styles.ingredientCard}>
+            <Text style={styles.label}>Namirnica</Text>
+            <Pressable
+              onPress={() => {
+                const empty = !ingredient.rawName.trim();
+                if (selectedIndex === index && !empty) {
+                  setSelectedIndex(null);
+                  return;
+                }
+                setSelectedIndex(index);
+                if (empty) setRenameOpen(true);
+              }}
+              style={styles.nameHit}
+            >
+              <Text style={styles.ingredientName}>{label}</Text>
+            </Pressable>
+            {showActions ? (
+              <IngredientEditActions
+                onRename={() => setRenameOpen(true)}
+                onLink={() => setPickerOpen(true)}
               />
-            </View>
-            <View style={styles.half}>
-              <Text style={styles.label}>Jedinica</Text>
-              <View style={styles.pickerContainer}>
-                <Picker
-                  dropdownIconColor={colors.text}
-                  style={{ color: colors.text }}
-                  selectedValue={ingredient.unit}
-                  onValueChange={(value) => updateIngredient(index, 'unit', value as Unit)}
-                >
-                  {allUnits.map((unit) => (
-                    <Picker.Item color={colors.text} key={unit} label={unit} value={unit} />
-                  ))}
-                </Picker>
+            ) : null}
+
+            <View style={styles.row}>
+              <View style={styles.half}>
+                <Input
+                  label="Količina"
+                  value={ingredient.quantity}
+                  onChangeText={(text) => updateIngredient(index, 'quantity', text)}
+                  placeholder="npr. 600"
+                  keyboardType="numeric"
+                />
+              </View>
+              <View style={styles.half}>
+                <Text style={styles.label}>Jedinica</Text>
+                <View style={styles.pickerContainer}>
+                  <Picker
+                    dropdownIconColor={colors.text}
+                    style={{ color: colors.text }}
+                    selectedValue={ingredient.unit}
+                    onValueChange={(value) => updateIngredient(index, 'unit', value as Unit)}
+                  >
+                    {allUnits.map((unit) => (
+                      <Picker.Item color={colors.text} key={unit} label={unit} value={unit} />
+                    ))}
+                  </Picker>
+                </View>
               </View>
             </View>
-          </View>
 
-          <Input
-            label="Napomena"
-            value={ingredient.notes}
-            onChangeText={(text) => updateIngredient(index, 'notes', text)}
-            placeholder="npr. bez kostiju"
-          />
+            <Input
+              label="Napomena"
+              value={ingredient.notes}
+              onChangeText={(text) => updateIngredient(index, 'notes', text)}
+              placeholder="npr. bez kostiju"
+            />
 
-          <Pressable onPress={() => removeIngredient(index)} style={styles.removeButton}>
-            <Text style={styles.removeText}>Ukloni sastojak</Text>
-          </Pressable>
-        </Card>
-      ))}
+            <Pressable onPress={() => removeIngredient(index)} style={styles.removeButton}>
+              <Text style={styles.removeText}>Ukloni sastojak</Text>
+            </Pressable>
+          </Card>
+        );
+      })}
 
       <Button
         title="+ Dodaj sastojak"
@@ -262,6 +340,24 @@ export function RecipeForm({
         <Button title={submitTitle} onPress={handleSubmit} loading={loading} />
       </View>
     </ScrollView>
+    <IngredientPickerSheet
+      visible={pickerOpen}
+      onClose={() => setPickerOpen(false)}
+      ingredients={catalog ?? []}
+      excludeIds={[
+        selected?.linkToIngredientId,
+        selected?.ingredientId,
+      ].filter((id): id is string => Boolean(id))}
+      absorbName={selected?.rawName ?? selected?.sourceName ?? ''}
+      onConfirm={handleLink}
+    />
+    <IngredientRenameSheet
+      visible={renameOpen}
+      onClose={() => setRenameOpen(false)}
+      initialName={selected?.rawName ?? ''}
+      onSave={handleRename}
+    />
+    </>
   );
 }
 
@@ -284,10 +380,30 @@ const styles = StyleSheet.create({
     ...typography.h2,
     color: colors.text,
     marginTop: spacing.xl,
+    marginBottom: spacing.sm,
+  },
+  hint: {
+    ...typography.bodySmall,
+    color: colors.textSecondary,
     marginBottom: spacing.md,
   },
   ingredientCard: {
     marginBottom: spacing.md,
+  },
+  nameHit: {
+    backgroundColor: colors.surfaceRaised,
+    borderRadius: 10,
+    borderWidth: 1,
+    borderColor: colors.border,
+    paddingHorizontal: spacing.md,
+    paddingVertical: spacing.md,
+    minHeight: 48,
+    justifyContent: 'center',
+    marginBottom: spacing.md,
+  },
+  ingredientName: {
+    ...typography.body,
+    color: colors.text,
   },
   label: {
     ...typography.bodySmall,

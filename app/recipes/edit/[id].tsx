@@ -39,6 +39,8 @@ export default function EditRecipeScreen() {
           id: i.id,
           ingredientId: i.ingredientId,
           rawName: i.rawName,
+          sourceName: i.sourceName,
+          linkToIngredientId: i.linkToIngredientId,
           quantity: parseQuantity(i.quantity),
           unit: i.unit,
           notes: i.notes,

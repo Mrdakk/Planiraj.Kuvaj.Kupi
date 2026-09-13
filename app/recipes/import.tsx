@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { ScrollView, StyleSheet, Text, View } from 'react-native';
+import { Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
 import { Stack, useRouter } from 'expo-router';
 import { useQueryClient } from '@tanstack/react-query';
 import { SafeAreaView } from 'react-native-safe-area-context';
@@ -9,34 +9,86 @@ import { Card } from '@/components/ui/Card';
 import { ConfirmSheet } from '@/components/ui/ConfirmSheet';
 import { EmojiBadge } from '@/components/ui/EmojiBadge';
 import { Input } from '@/components/ui/Input';
-import { createRecipeWithIngredients } from '@/features/recipes/service';
+import { IngredientEditActions } from '@/features/ingredients/IngredientEditActions';
+import { IngredientPickerSheet } from '@/features/ingredients/IngredientPickerSheet';
+import { IngredientRenameSheet } from '@/features/ingredients/IngredientRenameSheet';
+import { createRecipeWithIngredients, type RecipeIngredientInput } from '@/features/recipes/service';
 import { importRecipeFromUrl, type ImportedRecipe } from '@/features/recipes/importFromUrl';
+import { useIngredients } from '@/hooks/useIngredients';
 import { queryKeys } from '@/hooks/queryKeys';
 import { formatAmount } from '@/lib/formatQuantity';
 import { formatServings } from '@/lib/formatServings';
 import { displayIngredientName } from '@/lib/ingredientNames';
 import { getIngredientEmoji, getRecipeEmoji } from '@/constants/emojis';
+import type { Ingredient } from '@/types';
 
 export default function ImportRecipeScreen() {
   const router = useRouter();
   const queryClient = useQueryClient();
+  const { data: ingredients } = useIngredients();
   const [url, setUrl] = useState('');
   const [preview, setPreview] = useState<ImportedRecipe | null>(null);
   const [loading, setLoading] = useState(false);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [editing, setEditing] = useState(false);
+  const [selectedIndex, setSelectedIndex] = useState<number | null>(null);
+  const [pickerOpen, setPickerOpen] = useState(false);
+  const [renameOpen, setRenameOpen] = useState(false);
+
+  const selected = preview && selectedIndex !== null ? preview.ingredients[selectedIndex] : null;
 
   const handleRead = async () => {
     setLoading(true);
     setPreview(null);
+    setEditing(false);
+    setSelectedIndex(null);
     try {
       const imported = await importRecipeFromUrl(url);
-      setPreview(imported);
+      setPreview({
+        ...imported,
+        ingredients: imported.ingredients.map((item) => ({
+          ...item,
+          sourceName: item.sourceName ?? item.rawName,
+        })),
+      });
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Proveri link i internet, pa pokušaj ponovo.');
     } finally {
       setLoading(false);
     }
+  };
+
+  const updateIngredient = (index: number, patch: Partial<RecipeIngredientInput>) => {
+    setPreview((current) => {
+      if (!current) return current;
+      return {
+        ...current,
+        ingredients: current.ingredients.map((item, i) => (i === index ? { ...item, ...patch } : item)),
+      };
+    });
+  };
+
+  const handleLink = (keep: Ingredient) => {
+    if (selectedIndex === null) return;
+    const current = preview?.ingredients[selectedIndex];
+    updateIngredient(selectedIndex, {
+      rawName: keep.name,
+      linkToIngredientId: keep.id,
+      sourceName: current?.sourceName ?? current?.rawName,
+    });
+    setSelectedIndex(null);
+  };
+
+  const handleRename = (name: string) => {
+    if (selectedIndex === null) return;
+    const current = preview?.ingredients[selectedIndex];
+    updateIngredient(selectedIndex, {
+      rawName: name,
+      linkToIngredientId: undefined,
+      sourceName: current?.sourceName ?? current?.rawName,
+    });
+    setSelectedIndex(null);
   };
 
   const handleSave = async () => {
@@ -56,7 +108,24 @@ export default function ImportRecipeScreen() {
 
   return (
     <SafeAreaView style={styles.container} edges={['bottom']}>
-      <Stack.Screen options={{ title: 'Uvoz iz linka' }} />
+      <Stack.Screen
+        options={{
+          title: 'Uvoz iz linka',
+          headerRight: preview
+            ? () => (
+                <Pressable
+                  onPress={() => {
+                    setEditing((value) => !value);
+                    setSelectedIndex(null);
+                  }}
+                  style={{ marginRight: spacing.md }}
+                >
+                  <Text style={styles.editText}>{editing ? 'Pregled' : 'Uredi'}</Text>
+                </Pressable>
+              )
+            : undefined,
+        }}
+      />
       {preview ? (
         <ScrollView contentContainerStyle={styles.preview} showsVerticalScrollIndicator={false}>
           <View style={styles.headerRow}>
@@ -75,11 +144,16 @@ export default function ImportRecipeScreen() {
 
           <Text style={styles.sectionTitle}>Sastojci</Text>
           {preview.ingredients.map((item, index) => {
-            const name = displayIngredientName(item.rawName);
-            return (
-              <Card key={`${item.rawName}-${index}`} tone="bone" style={styles.ingredientCard}>
+            const linked = ingredients?.find((row) => row.id === item.linkToIngredientId);
+            const name = displayIngredientName(item.rawName || linked?.name);
+            const card = (
+              <Card tone="bone" style={styles.ingredientCard}>
                 <View style={styles.ingredientRow}>
-                  <EmojiBadge emoji={getIngredientEmoji(name)} size={36} name={name} />
+                  <EmojiBadge
+                    emoji={getIngredientEmoji(name, linked?.category, linked?.emoji)}
+                    size={36}
+                    name={name}
+                  />
                   <View style={styles.ingredientBody}>
                     <Text style={styles.ingredientName}>{name}</Text>
                     <Text style={styles.ingredientQuantity}>
@@ -88,7 +162,24 @@ export default function ImportRecipeScreen() {
                     {item.notes ? <Text style={styles.note}>{item.notes}</Text> : null}
                   </View>
                 </View>
+                {editing && selectedIndex === index ? (
+                  <IngredientEditActions
+                    onRename={() => setRenameOpen(true)}
+                    onLink={() => setPickerOpen(true)}
+                  />
+                ) : null}
               </Card>
+            );
+            if (!editing) {
+              return <View key={`${item.sourceName ?? item.rawName}-${index}`}>{card}</View>;
+            }
+            return (
+              <Pressable
+                key={`${item.sourceName ?? item.rawName}-${index}`}
+                onPress={() => setSelectedIndex((current) => (current === index ? null : index))}
+              >
+                {card}
+              </Pressable>
             );
           })}
 
@@ -110,7 +201,11 @@ export default function ImportRecipeScreen() {
             <Button title="Sačuvaj recept" onPress={handleSave} loading={saving} disabled={saving} />
             <Button
               title="Otkaži"
-              onPress={() => setPreview(null)}
+              onPress={() => {
+                setPreview(null);
+                setEditing(false);
+                setSelectedIndex(null);
+              }}
               variant="secondary"
               disabled={saving}
             />
@@ -139,6 +234,20 @@ export default function ImportRecipeScreen() {
           />
         </View>
       )}
+      <IngredientPickerSheet
+        visible={pickerOpen}
+        onClose={() => setPickerOpen(false)}
+        ingredients={ingredients ?? []}
+        excludeIds={selected?.linkToIngredientId ? [selected.linkToIngredientId] : []}
+        absorbName={selected?.rawName ?? selected?.sourceName ?? ''}
+        onConfirm={handleLink}
+      />
+      <IngredientRenameSheet
+        visible={renameOpen}
+        onClose={() => setRenameOpen(false)}
+        initialName={selected?.rawName ?? ''}
+        onSave={handleRename}
+      />
       <ConfirmSheet
         visible={error !== null}
         title="Uvoz nije uspeo"
@@ -180,6 +289,10 @@ const styles = StyleSheet.create({
     ...typography.h1,
     color: colors.text,
     flex: 1,
+  },
+  editText: {
+    ...typography.body,
+    color: colors.primary,
   },
   meta: {
     ...typography.body,
