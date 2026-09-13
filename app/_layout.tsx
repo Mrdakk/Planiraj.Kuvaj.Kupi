@@ -110,7 +110,7 @@ function AppShell() {
     >
       <Stack.Screen name="(tabs)" options={{ headerShown: false }} />
       <Stack.Screen name="recipes/index" options={{ title: 'Recepti' }} />
-      <Stack.Screen name="recipes/import" options={{ title: 'Uvoz iz linka' }} />
+      <Stack.Screen name="recipes/import" options={{ title: 'Uvoz recepta' }} />
       <Stack.Screen name="recipes/create" options={{ title: 'Novi recept' }} />
       <Stack.Screen name="recipes/edit/[id]" options={{ title: 'Izmeni recept' }} />
       <Stack.Screen name="recipes/add-to-plan/[id]" options={{ title: 'Dodaj u plan' }} />

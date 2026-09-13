@@ -1,4 +1,12 @@
 import { draftToRecipe, extractRecipeDraftFromHtml, htmlToPlainText } from './parsePage.ts';
+import {
+  collectVideoText,
+  formatVideoMaterial,
+  joinedVideoText,
+  materialIsTooShort,
+  pastedTextReady,
+} from './videoText.ts';
+import { isVideoImportUrl } from './videoUrl.ts';
 
 const ALLOWED_UNITS = [
   'g',
@@ -262,7 +270,63 @@ async function fetchRecipePage(url: string): Promise<{ ok: true; html: string } 
   }
 }
 
+async function handleImportText(groqKey: string, text: string) {
+  if (!pastedTextReady(text)) {
+    return jsonResponse({ error: 'Nalepi duži tekst recepta (bar sastojke).' }, 422);
+  }
+
+  const groq = await groqParseMaterial(
+    groqKey,
+    `Izvuci recept iz nalepijenog teksta.
+Ne otvaraj URL. Ne izmišljaj sastojke koji nisu u tekstu.
+Ako nema recepta, vrati {"error":"Nije pronađen recept na stranici."}
+
+${text}`
+  );
+  if (!groq.ok) {
+    return groqErrorResponse(groq.status, groq.errorMessage);
+  }
+  const parsed = recipeFromGroq(groq.content);
+  if (parsed) return jsonResponse({ recipe: parsed });
+  return jsonResponse(
+    { error: 'Nije mogao da se pročita recept iz tog teksta. Dopuni sastojke ili unesi recept ručno.' },
+    422
+  );
+}
+
+async function handleImportVideo(groqKey: string, url: string) {
+  const parts = await collectVideoText(url);
+  const joined = joinedVideoText(parts);
+  if (materialIsTooShort(joined)) {
+    return jsonResponse(
+      {
+        error:
+          'Na tom videu nema javnog opisa ni titlova. Probaj drugi link, nalepi tekst, ili unesi recept ručno.',
+      },
+      422
+    );
+  }
+
+  const groq = await groqParseMaterial(groqKey, formatVideoMaterial(url, parts));
+  if (!groq.ok) {
+    return groqErrorResponse(groq.status, groq.errorMessage);
+  }
+  const parsed = recipeFromGroq(groq.content);
+  if (parsed) return jsonResponse({ recipe: parsed });
+  return jsonResponse(
+    {
+      error:
+        'Nije mogao da se pročita recept sa tog videa. Treba opis ili titlovi sa sastojcima, nalepi tekst, ili unesi recept ručno.',
+    },
+    422
+  );
+}
+
 async function handleImportUrl(groqKey: string, url: string) {
+  if (isVideoImportUrl(url)) {
+    return handleImportVideo(groqKey, url);
+  }
+
   const page = await fetchRecipePage(url);
 
   if (page.ok) {
@@ -333,11 +397,14 @@ Deno.serve(async (req) => {
     );
   }
 
-  let body: { url?: string; names?: unknown; ingredientNames?: unknown };
+  let body: { url?: string; text?: string; names?: unknown; ingredientNames?: unknown };
   try {
-    body = (await req.json()) as { url?: string; names?: unknown; ingredientNames?: unknown };
+    body = (await req.json()) as { url?: string; text?: string; names?: unknown; ingredientNames?: unknown };
   } catch {
-    return jsonResponse({ error: 'Telo zahteva mora biti JSON sa poljem url, names ili ingredientNames.' }, 400);
+    return jsonResponse(
+      { error: 'Telo zahteva mora biti JSON sa poljem url, text, names ili ingredientNames.' },
+      400
+    );
   }
 
   const uniqueNames = (value: unknown) =>
@@ -364,8 +431,15 @@ Deno.serve(async (req) => {
   }
 
   const url = body.url?.trim() ?? '';
+  const text = typeof body.text === 'string' ? body.text.trim() : '';
+  if (url && text) {
+    return jsonResponse({ error: 'Pošalji ili url ili text, ne oba.' }, 400);
+  }
+  if (text) {
+    return handleImportText(groqKey, text);
+  }
   if (!isHttpUrl(url)) {
-    return jsonResponse({ error: 'Unesi ispravan http(s) link ili listu naziva.' }, 400);
+    return jsonResponse({ error: 'Unesi ispravan http(s) link, nalepi text, ili listu naziva.' }, 400);
   }
 
   return handleImportUrl(groqKey, url);

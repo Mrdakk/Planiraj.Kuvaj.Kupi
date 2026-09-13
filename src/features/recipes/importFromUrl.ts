@@ -5,7 +5,7 @@ import { allUnits, type Unit } from '@/constants/units';
 import type { CreateRecipeInput } from '@/features/recipes/service';
 
 export interface ImportedRecipe extends CreateRecipeInput {
-  sourceUrl: string;
+  sourceUrl?: string;
 }
 
 const UNIT_SET = new Set<string>(allUnits);
@@ -66,7 +66,12 @@ function asNumber(value: unknown): number {
   return 1;
 }
 
-function mapRecipe(payload: Record<string, unknown>, sourceUrl: string): ImportedRecipe {
+export function importSourceNote(sourceUrl?: string): string {
+  const url = sourceUrl?.trim();
+  return url ? `Izvor: ${url}` : 'Uvezeno iz nalepijenog teksta';
+}
+
+function mapRecipe(payload: Record<string, unknown>, sourceUrl?: string): ImportedRecipe {
   const ingredientsRaw = Array.isArray(payload.ingredients) ? payload.ingredients : [];
   const stepsRaw = Array.isArray(payload.steps) ? payload.steps : [];
   const ingredients = ingredientsRaw
@@ -90,7 +95,7 @@ function mapRecipe(payload: Record<string, unknown>, sourceUrl: string): Importe
     throw new Error('Stranica je pročitana, ali recept nije kompletan. Proveri link ili uredi ručno.');
   }
 
-  const sourceNote = `Izvor: ${sourceUrl}`;
+  const sourceNote = importSourceNote(sourceUrl);
   const notes = String(payload.notes ?? '').trim();
 
   const classified = classifyImportedCategory(String(payload.category ?? '').trim() || null);
@@ -108,33 +113,30 @@ function mapRecipe(payload: Record<string, unknown>, sourceUrl: string): Importe
     notes: notes ? `${notes}\n${sourceNote}` : sourceNote,
     emoji: normalizeRecipeEmoji(String(payload.emoji ?? '')) ?? undefined,
     ingredients,
-    sourceUrl,
+    ...(sourceUrl?.trim() ? { sourceUrl: sourceUrl.trim() } : {}),
   };
 }
 
-export async function importRecipeFromUrl(url: string): Promise<ImportedRecipe> {
-  const trimmed = url.trim();
-  if (!/^https?:\/\//i.test(trimmed)) {
-    throw new Error('Unesi ispravan link (http ili https).');
-  }
+const IMPORT_UNAVAILABLE =
+  'Uvoz nije dostupan u ovoj instalaciji. Sačuvaj recept ručno ili dodaj Supabase ključeve u EAS preview.';
 
+async function invokeImportRecipe(
+  body: { url: string } | { text: string },
+  sourceUrl?: string
+): Promise<ImportedRecipe> {
   if (!supabase) {
-    throw new Error(
-      'Uvoz iz linka nije dostupan u ovoj instalaciji. Sačuvaj recept ručno ili dodaj Supabase ključeve u EAS preview.'
-    );
+    throw new Error(IMPORT_UNAVAILABLE);
   }
 
-  const { data, error } = await supabase.functions.invoke('import-recipe', {
-    body: { url: trimmed },
-  });
+  const { data, error } = await supabase.functions.invoke('import-recipe', { body });
 
   if (error) {
     let message = error.message || 'Uvoz nije uspeo.';
     const context = (error as { context?: Response }).context;
     if (context && typeof context.json === 'function') {
       try {
-        const body = (await context.json()) as { error?: string };
-        if (body.error) message = body.error;
+        const responseBody = (await context.json()) as { error?: string };
+        if (responseBody.error) message = responseBody.error;
       } catch {
         // keep fallback message
       }
@@ -147,12 +149,28 @@ export async function importRecipeFromUrl(url: string): Promise<ImportedRecipe> 
   }
 
   if (data && typeof data === 'object' && 'recipe' in data && data.recipe && typeof data.recipe === 'object') {
-    return mapRecipe(data.recipe as Record<string, unknown>, trimmed);
+    return mapRecipe(data.recipe as Record<string, unknown>, sourceUrl);
   }
 
   if (data && typeof data === 'object' && 'name' in data) {
-    return mapRecipe(data as Record<string, unknown>, trimmed);
+    return mapRecipe(data as Record<string, unknown>, sourceUrl);
   }
 
   throw new Error('Groq nije vratio recept u očekivanom formatu.');
+}
+
+export async function importRecipeFromUrl(url: string): Promise<ImportedRecipe> {
+  const trimmed = url.trim();
+  if (!/^https?:\/\//i.test(trimmed)) {
+    throw new Error('Unesi ispravan link (http ili https).');
+  }
+  return invokeImportRecipe({ url: trimmed }, trimmed);
+}
+
+export async function importRecipeFromText(text: string): Promise<ImportedRecipe> {
+  const trimmed = text.trim();
+  if (trimmed.length < 40) {
+    throw new Error('Nalepi duži tekst recepta (bar sastojke).');
+  }
+  return invokeImportRecipe({ text: trimmed });
 }

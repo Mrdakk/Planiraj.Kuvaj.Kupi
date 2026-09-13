@@ -4,6 +4,7 @@ import { Stack, useRouter } from 'expo-router';
 import { useQueryClient } from '@tanstack/react-query';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { colors, typography, spacing } from '@/constants/theme';
+import { ChipRow } from '@/components/ui/ChipRow';
 import { Button } from '@/components/ui/Button';
 import { Card } from '@/components/ui/Card';
 import { ConfirmSheet } from '@/components/ui/ConfirmSheet';
@@ -13,7 +14,7 @@ import { IngredientEditActions } from '@/features/ingredients/IngredientEditActi
 import { IngredientPickerSheet } from '@/features/ingredients/IngredientPickerSheet';
 import { IngredientRenameSheet } from '@/features/ingredients/IngredientRenameSheet';
 import { createRecipeWithIngredients, type RecipeIngredientInput } from '@/features/recipes/service';
-import { importRecipeFromUrl, type ImportedRecipe } from '@/features/recipes/importFromUrl';
+import { importRecipeFromText, importRecipeFromUrl, type ImportedRecipe } from '@/features/recipes/importFromUrl';
 import { useIngredients } from '@/hooks/useIngredients';
 import { queryKeys } from '@/hooks/queryKeys';
 import { formatAmount } from '@/lib/formatQuantity';
@@ -26,7 +27,9 @@ export default function ImportRecipeScreen() {
   const router = useRouter();
   const queryClient = useQueryClient();
   const { data: ingredients } = useIngredients();
+  const [mode, setMode] = useState<'Link' | 'Tekst'>('Link');
   const [url, setUrl] = useState('');
+  const [text, setText] = useState('');
   const [preview, setPreview] = useState<ImportedRecipe | null>(null);
   const [loading, setLoading] = useState(false);
   const [saving, setSaving] = useState(false);
@@ -44,7 +47,8 @@ export default function ImportRecipeScreen() {
     setEditing(false);
     setSelectedIndex(null);
     try {
-      const imported = await importRecipeFromUrl(url);
+      const imported =
+        mode === 'Tekst' ? await importRecipeFromText(text) : await importRecipeFromUrl(url);
       setPreview({
         ...imported,
         ingredients: imported.ingredients.map((item) => ({
@@ -110,7 +114,7 @@ export default function ImportRecipeScreen() {
     <SafeAreaView style={styles.container} edges={['bottom']}>
       <Stack.Screen
         options={{
-          title: 'Uvoz iz linka',
+          title: 'Uvoz recepta',
           headerRight: preview
             ? () => (
                 <Pressable
@@ -212,27 +216,61 @@ export default function ImportRecipeScreen() {
           </View>
         </ScrollView>
       ) : (
-        <View style={styles.content}>
-          <Text style={styles.help}>
-            Nalepi link recepta. Prvo ćeš videti pregled, pa tek onda biraš da sačuvaš. Kuhinja se
-            ne menja.
-          </Text>
-          <Input
-            label="Link"
-            value={url}
-            onChangeText={setUrl}
-            autoCapitalize="none"
-            autoCorrect={false}
-            keyboardType="url"
-            placeholder="https://www.coolinarika.com/recept/..."
+        <ScrollView
+          contentContainerStyle={styles.content}
+          keyboardShouldPersistTaps="handled"
+          showsVerticalScrollIndicator={false}
+        >
+          <ChipRow
+            items={['Link', 'Tekst']}
+            selected={mode}
+            onSelect={(item) => {
+              if (item === 'Link' || item === 'Tekst') setMode(item);
+            }}
+            allowDeselect={false}
+            padded={false}
           />
+          {mode === 'Link' ? (
+            <>
+              <Text style={styles.help}>
+                Nalepi link recepta, javni TikTok, Reels ili Shorts. Radi kad su sastojci na stranici, u
+                opisu ili u titlovima. Prvo ćeš videti pregled, pa tek onda biraš da sačuvaš. Kuhinja se
+                ne menja.
+              </Text>
+              <Input
+                label="Link"
+                value={url}
+                onChangeText={setUrl}
+                autoCapitalize="none"
+                autoCorrect={false}
+                keyboardType="url"
+                placeholder="https://www.tiktok.com/@…/video/…"
+              />
+            </>
+          ) : (
+            <>
+              <Text style={styles.help}>
+                Nalepi sirovi recept — sastojci i koraci kako god stoje. Prvo ćeš videti pregled, pa tek
+                onda biraš da sačuvaš. Kuhinja se ne menja.
+              </Text>
+              <Input
+                label="Tekst recepta"
+                value={text}
+                onChangeText={setText}
+                multiline
+                textAlignVertical="top"
+                placeholder={'Musaka\n500 g mesa\n4 krompira\nIsprži meso, pa složi sa krompirom.'}
+                style={styles.textPaste}
+              />
+            </>
+          )}
           <Button
             title="Učitaj recept"
             onPress={handleRead}
             loading={loading}
-            disabled={!url.trim() || loading}
+            disabled={(mode === 'Link' ? !url.trim() : text.trim().length < 40) || loading}
           />
-        </View>
+        </ScrollView>
       )}
       <IngredientPickerSheet
         visible={pickerOpen}
@@ -274,6 +312,9 @@ const styles = StyleSheet.create({
   help: {
     ...typography.body,
     color: colors.textSecondary,
+  },
+  textPaste: {
+    minHeight: 160,
   },
   preview: {
     padding: spacing.lg,
