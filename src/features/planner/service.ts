@@ -3,9 +3,9 @@ import { generateUUID } from '@/lib/uuid';
 import { nowISO } from '@/database/repository';
 import { formatDisplayDate, formatDisplayDateFromDate, parseISODate, toISODate, todayISO } from '@/lib/dates';
 import type { Meal, MealPlan } from '@/types';
-import type { MealType } from '@/constants/categories';
+import { mealTypes, type MealType } from '@/constants/categories';
 
-export const MEAL_TYPE_PLAN_ORDER: MealType[] = ['Doručak', 'Užina', 'Ručak', 'Večera', 'Desert'];
+export const MEAL_TYPE_PLAN_ORDER: readonly MealType[] = mealTypes;
 
 export function getWeekStart(date: Date): string {
   const d = new Date(date);

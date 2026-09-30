@@ -5,13 +5,13 @@ import { useQueryClient } from '@tanstack/react-query';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { colors, typography, spacing } from '@/constants/theme';
 import { RecipeForm } from '@/features/recipes/RecipeForm';
-import { updateRecipeWithIngredients } from '@/features/recipes/service';
+import { updateRecipeWithIngredients, type CreateRecipeInput } from '@/features/recipes/service';
 import { useRecipe } from '@/hooks/useRecipes';
-import { queryKeys } from '@/hooks/queryKeys';
+import { invalidateAfterRecipeChange } from '@/hooks/invalidate';
 import { ConfirmSheet } from '@/components/ui/ConfirmSheet';
 import { EmptyState } from '@/components/ui/EmptyState';
-import type { RecipeFormData } from '@/features/recipes/RecipeForm';
-import { parseQuantity } from '@/lib/formatQuantity';
+
+const screenOptions = { title: 'Izmeni recept' };
 
 export default function EditRecipeScreen() {
   const { id: idParam } = useLocalSearchParams<{ id: string }>();
@@ -22,33 +22,12 @@ export default function EditRecipeScreen() {
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
-  const handleSubmit = async (data: RecipeFormData) => {
-    if (!recipe) return;
+  const handleSubmit = async (input: CreateRecipeInput) => {
+    if (!recipe || saving) return;
     setSaving(true);
     try {
-      const updated = await updateRecipeWithIngredients(recipe, {
-        name: data.name,
-        description: data.description,
-        baseServings: data.baseServings,
-        prepTimeMinutes: data.prepTimeMinutes,
-        mealTypes: data.mealTypes,
-        dishType: data.dishType || null,
-        steps: data.steps.split('\n').map((s) => s.trim()).filter(Boolean),
-        notes: data.notes,
-        ingredients: data.ingredients.map((i) => ({
-          id: i.id,
-          ingredientId: i.ingredientId,
-          rawName: i.rawName,
-          sourceName: i.sourceName,
-          linkToIngredientId: i.linkToIngredientId,
-          quantity: parseQuantity(i.quantity),
-          unit: i.unit,
-          notes: i.notes,
-        })),
-      });
-      await queryClient.invalidateQueries({ queryKey: queryKeys.recipe(updated.id) });
-      await queryClient.invalidateQueries({ queryKey: queryKeys.recipes });
-      await queryClient.invalidateQueries({ queryKey: queryKeys.ingredients });
+      const updated = await updateRecipeWithIngredients(recipe, input);
+      await invalidateAfterRecipeChange(queryClient);
       router.replace(`/recipes/${updated.id}`);
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Greška pri čuvanju recepta');
@@ -60,7 +39,7 @@ export default function EditRecipeScreen() {
   if (isLoading) {
     return (
       <SafeAreaView style={styles.container} edges={['bottom']}>
-        <Stack.Screen options={{ title: 'Izmeni recept' }} />
+        <Stack.Screen options={screenOptions} />
         <Text style={styles.subtitle}>Učitavanje...</Text>
       </SafeAreaView>
     );
@@ -69,15 +48,20 @@ export default function EditRecipeScreen() {
   if (!recipe) {
     return (
       <SafeAreaView style={styles.container} edges={['bottom']}>
-        <Stack.Screen options={{ title: 'Izmeni recept' }} />
-        <EmptyState title="Recept nije pronađen" message="" />
+        <Stack.Screen options={screenOptions} />
+        <EmptyState
+          title="Recept nije pronađen"
+          message="Možda je obrisan."
+          actionTitle="Nazad"
+          onAction={() => router.back()}
+        />
       </SafeAreaView>
     );
   }
 
   return (
     <SafeAreaView style={styles.container} edges={['bottom']}>
-      <Stack.Screen options={{ title: 'Izmeni recept' }} />
+      <Stack.Screen options={screenOptions} />
       <RecipeForm
         defaultValues={recipe}
         onSubmit={handleSubmit}

@@ -50,13 +50,15 @@ describe('buildCookedMealHistory', () => {
     );
 
     expect(rows).toEqual([
-      { id: 'newer', recipeName: 'Pasulj', date: '2026-09-12' },
-      { id: 'older', recipeName: 'Pita', date: '2026-09-10' },
+      { id: 'newer', recipeName: 'Pasulj', date: '2026-09-12', mealType: 'Ručak' },
+      { id: 'older', recipeName: 'Pita', date: '2026-09-10', mealType: 'Ručak' },
     ]);
   });
 
   it('uses Obrok when the recipe is missing', () => {
     const rows = buildCookedMealHistory([meal({ recipeId: 'gone' })], []);
-    expect(rows).toEqual([{ id: 'meal-1', recipeName: 'Obrok', date: '2026-09-12' }]);
+    expect(rows).toEqual([
+      { id: 'meal-1', recipeName: 'Obrok', date: '2026-09-12', mealType: 'Ručak' },
+    ]);
   });
 });

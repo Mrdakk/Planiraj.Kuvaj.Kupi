@@ -1,5 +1,6 @@
 import type { MealType } from '@/constants/categories';
 import { mealTypes } from '@/constants/categories';
+import { foldSearchText } from '@/lib/foldSearchText';
 import { mealTypeRank, recipeHasMealType } from './classification';
 
 export type RecipeMealType = MealType;
@@ -10,14 +11,7 @@ type RecipeListItem = {
   dishType?: string | null;
 };
 
-export function foldSearchText(value: string): string {
-  return value
-    .trim()
-    .toLowerCase()
-    .replace(/đ/g, 'dj')
-    .normalize('NFD')
-    .replace(/\p{M}/gu, '');
-}
+export { foldSearchText };
 
 export function recipeMatchesSearch(recipe: RecipeListItem, term: string): boolean {
   const query = foldSearchText(term);

@@ -120,6 +120,8 @@ function mapRecipe(payload: Record<string, unknown>, sourceUrl?: string): Import
 const IMPORT_UNAVAILABLE =
   'Uvoz nije dostupan u ovoj instalaciji. Sačuvaj recept ručno ili dodaj Supabase ključeve u EAS preview.';
 
+const IMPORT_OFFLINE = 'Uvoz traži internet. Proveri vezu i pokušaj ponovo.';
+
 async function invokeImportRecipe(
   body: { url: string } | { text: string },
   sourceUrl?: string
@@ -128,9 +130,18 @@ async function invokeImportRecipe(
     throw new Error(IMPORT_UNAVAILABLE);
   }
 
-  const { data, error } = await supabase.functions.invoke('import-recipe', { body });
+  let response: Awaited<ReturnType<typeof supabase.functions.invoke>>;
+  try {
+    response = await supabase.functions.invoke('import-recipe', { body });
+  } catch {
+    throw new Error(IMPORT_OFFLINE);
+  }
+  const { data, error } = response;
 
   if (error) {
+    if (error.name === 'FunctionsFetchError' || error.name === 'FunctionsRelayError') {
+      throw new Error(IMPORT_OFFLINE);
+    }
     let message = error.message || 'Uvoz nije uspeo.';
     const context = (error as { context?: Response }).context;
     if (context && typeof context.json === 'function') {
@@ -156,7 +167,7 @@ async function invokeImportRecipe(
     return mapRecipe(data as Record<string, unknown>, sourceUrl);
   }
 
-  throw new Error('Groq nije vratio recept u očekivanom formatu.');
+  throw new Error('Recept nije prepoznat. Probaj da nalepiš tekst recepta umesto linka.');
 }
 
 export async function importRecipeFromUrl(url: string): Promise<ImportedRecipe> {

@@ -1,9 +1,9 @@
 import { StyleSheet, Text, View } from 'react-native';
-import { colors, spacing, typography } from '@/constants/theme';
+import { colors, radii, spacing, typography } from '@/constants/theme';
 
 export function NewBadge() {
   return (
-    <View style={styles.badge}>
+    <View style={styles.badge} accessibilityLabel="Novo">
       <Text style={styles.text}>NOVO</Text>
     </View>
   );
@@ -12,9 +12,9 @@ export function NewBadge() {
 const styles = StyleSheet.create({
   badge: {
     backgroundColor: colors.primary,
-    borderRadius: 999,
+    borderRadius: radii.pill,
     paddingHorizontal: spacing.sm,
-    paddingVertical: 2,
+    paddingVertical: spacing.xxs,
   },
   text: {
     ...typography.caption,

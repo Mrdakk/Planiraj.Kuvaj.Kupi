@@ -7,6 +7,10 @@ import {
   pastedTextReady,
 } from './videoText.ts';
 import { isVideoImportUrl } from './videoUrl.ts';
+import {
+  canonicalIngredientEmoji,
+  ingredientEmojiPromptLines,
+} from '../../../src/constants/ingredientEmojis.ts';
 
 const ALLOWED_UNITS = [
   'g',
@@ -87,14 +91,16 @@ JSON šema:
   }
 }
 
+Dozvoljeni emoji, tačno jedan od ovih:
+${ingredientEmojiPromptLines()}
+
 Pravila:
 - Jedan emoji po nazivu, bez teksta i bez nabrajanja.
-- Emoji mora da predstavi tu namirnicu.
-- beli luk = 🧄, crni luk = 🧅.
-- aleva paprika / mljevena paprika = 🌶️, sveža paprika = 🫑.
-- mleveno meso = 🥩, slanina = 🥓.
+- Emoji mora biti tačno jedan sa liste iznad.
+- beli luk = 🧄, crni luk = 🧅, aleva paprika = 🌶️, sveža paprika = 🫑.
+- mleveno meso = 🥩, slanina = 🥓, sirće = 🫙, sočivo = 🫘.
 - Ključ mora biti identičan datom nazivu.
-- Ako nisi siguran, izaberi najbliži grocery emoji.`;
+- Ako nisi siguran, izaberi najbliži emoji sa liste.`;
 
 const corsHeaders = {
   'Access-Control-Allow-Origin': '*',
@@ -167,12 +173,15 @@ async function groqChat(
 async function handleEmojiBatch(
   groqKey: string,
   systemPrompt: string,
-  userContent: string
+  userContent: string,
+  options?: { model?: string; ingredientList?: boolean }
 ) {
+  const model = options?.model ?? 'openai/gpt-oss-20b';
   const groq = await groqChat(groqKey, {
-    model: 'openai/gpt-oss-20b',
+    model,
     temperature: 0.2,
     response_format: { type: 'json_object' },
+    ...(model === 'openai/gpt-oss-120b' ? { reasoning_effort: 'low', max_tokens: 1500 } : {}),
     messages: [
       { role: 'system', content: systemPrompt },
       { role: 'user', content: userContent },
@@ -199,9 +208,14 @@ async function handleEmojiBatch(
       : payload;
   const emojis: Record<string, string> = {};
   for (const [key, value] of Object.entries(raw)) {
-    if (typeof value === 'string' && value.trim()) {
-      emojis[key] = value.trim();
-    }
+    if (typeof value !== 'string' || !value.trim()) continue;
+    const pictograph = value
+      .trim()
+      .match(/\p{Extended_Pictographic}(?:\uFE0F|\u200D\p{Extended_Pictographic})*/u)?.[0];
+    const emoji = options?.ingredientList
+      ? canonicalIngredientEmoji(pictograph ?? value.trim())
+      : (pictograph ?? value.trim());
+    if (emoji) emojis[key] = emoji;
   }
 
   return jsonResponse({ emojis });
@@ -417,7 +431,8 @@ Deno.serve(async (req) => {
     return handleEmojiBatch(
       groqKey,
       INGREDIENT_EMOJI_SYSTEM_PROMPT,
-      `Izaberi emoji za ove namirnice:\n${JSON.stringify(ingredientNames)}`
+      `Izaberi emoji za ove namirnice. Za svaki naziv vrati samo jedan emoji sa dozvoljene liste:\n${JSON.stringify(ingredientNames)}`,
+      { model: 'openai/gpt-oss-120b', ingredientList: true }
     );
   }
 

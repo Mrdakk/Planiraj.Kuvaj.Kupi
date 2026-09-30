@@ -15,12 +15,14 @@ export function RecipePickerField({
   recipes,
   onChange,
   placeholder = 'Izaberi recept',
+  disabled = false,
 }: {
   label?: string;
   value: string;
   recipes: Recipe[];
   onChange: (recipeId: string) => void;
   placeholder?: string;
+  disabled?: boolean;
 }) {
   const [open, setOpen] = useState(false);
   const [query, setQuery] = useState('');
@@ -35,7 +37,13 @@ export function RecipePickerField({
   return (
     <View style={styles.container}>
       {label ? <Text style={styles.label}>{label}</Text> : null}
-      <Pressable onPress={() => setOpen(true)} style={styles.field}>
+      <Pressable
+        onPress={() => setOpen(true)}
+        disabled={disabled}
+        style={[styles.field, disabled && styles.fieldDisabled]}
+        accessibilityRole="button"
+        accessibilityLabel={selected ? `${label}: ${selected.name}` : placeholder}
+      >
         {selected ? (
           <Text style={styles.emoji}>{getRecipeEmoji(selected.name, selected.emoji)}</Text>
         ) : (
@@ -44,7 +52,7 @@ export function RecipePickerField({
         <Text style={[styles.value, !selected && styles.placeholder]} numberOfLines={1}>
           {selected?.name ?? placeholder}
         </Text>
-        <Ionicons name="chevron-down" size={18} color={colors.textMuted} />
+        {disabled ? null : <Ionicons name="chevron-down" size={18} color={colors.textMuted} />}
       </Pressable>
 
       <AppSheet
@@ -123,9 +131,11 @@ const styles = StyleSheet.create({
     paddingVertical: spacing.md,
     minHeight: 48,
   },
+  fieldDisabled: {
+    opacity: 0.6,
+  },
   emoji: {
-    fontSize: 20,
-    lineHeight: 24,
+    ...typography.emojiSmall,
   },
   value: {
     ...typography.body,

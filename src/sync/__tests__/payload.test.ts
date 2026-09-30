@@ -13,6 +13,8 @@ describe('toServerPayload', () => {
         category: 'Mlečni proizvodi',
         defaultUnit: 'kom',
         trackPresence: true,
+        emoji: '🥕',
+        emojiSource: 'user',
         createdAt: '2026-09-01T00:00:00.000Z',
         updatedAt: '2026-09-01T00:00:00.000Z',
         sync_status: 'pending',
@@ -22,6 +24,8 @@ describe('toServerPayload', () => {
 
     expect(payload.household_id).toBe(householdId);
     expect(payload).not.toHaveProperty('sync_status');
+    expect(payload).not.toHaveProperty('emoji');
+    expect(payload).not.toHaveProperty('emoji_source');
     expect(payload.default_unit).toBe('kom');
     expect(payload.track_presence).toBe(true);
     expect(payload.created_at).toBe('2026-09-01T00:00:00.000Z');

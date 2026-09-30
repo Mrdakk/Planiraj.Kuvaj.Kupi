@@ -58,7 +58,7 @@ function createMeal(overrides: Partial<Meal> = {}): Meal {
     recipeId: overrides.recipeId ?? 'rec-1',
     servings: overrides.servings ?? 4,
     notes: null,
-    isCooked: false,
+    isCooked: overrides.isCooked ?? false,
     createdAt: '2024-01-01T00:00:00Z',
     updatedAt: '2024-01-01T00:00:00Z',
   };
@@ -233,7 +233,7 @@ describe('Calculation Engine', () => {
     expect(result.shoppingList).toHaveLength(0);
   });
 
-  it('Test 8: Cooked does not auto-reduce stock in calculation', () => {
+  it('Test 8: Cooked meals no longer need ingredients (stock was already deducted)', () => {
     const chicken = createIngredient({ id: 'ing-chicken', name: 'Piletina', defaultUnit: 'g' });
     const recipe = createRecipe({ id: 'rec-1', baseServings: 4 });
     const input: CalculationInput = {
@@ -242,14 +242,38 @@ describe('Calculation Engine', () => {
       recipeIngredients: [
         createRecipeIngredient({ recipeId: 'rec-1', ingredientId: 'ing-chicken', quantity: 600, unit: 'g' }),
       ],
-      meals: [createMeal({ recipeId: 'rec-1', servings: 4, isCooked: true })],
+      meals: [
+        createMeal({ id: 'meal-cooked', recipeId: 'rec-1', servings: 4, isCooked: true }),
+        createMeal({ id: 'meal-next', recipeId: 'rec-1', servings: 4 }),
+      ],
       pantryItems: [createPantryItem({ ingredientId: 'ing-chicken', quantity: 300, unit: 'g' })],
     };
 
     const result = calculate(input);
     const chickenResult = result.byIngredient.find((r) => r.ingredientId === 'ing-chicken');
-    // Calculation engine does not consume stock. It should still report missing 300 g.
+    expect(chickenResult!.requiredQuantity).toBe(600);
     expect(chickenResult!.missingQuantity).toBe(300);
+    expect(chickenResult!.meals.map((m) => m.mealId)).toEqual(['meal-next']);
+  });
+
+  it('keeps amounts in units that cannot convert as separate rows instead of dropping them', () => {
+    const garlic = createIngredient({ id: 'ing-garlic', name: 'Beli luk', defaultUnit: 'g' });
+    const recipe = createRecipe({ id: 'rec-1', baseServings: 4 });
+    const input: CalculationInput = {
+      ingredients: [garlic],
+      recipes: [recipe],
+      recipeIngredients: [
+        createRecipeIngredient({ id: 'ri-1', recipeId: 'rec-1', ingredientId: 'ing-garlic', quantity: 20, unit: 'g' }),
+        createRecipeIngredient({ id: 'ri-2', recipeId: 'rec-1', ingredientId: 'ing-garlic', quantity: 3, unit: 'čen' }),
+      ],
+      meals: [createMeal({ recipeId: 'rec-1', servings: 4 })],
+      pantryItems: [],
+    };
+
+    const result = calculate(input);
+    const rows = result.missing.filter((r) => r.ingredientId === 'ing-garlic');
+    expect(rows.map((r) => `${r.missingQuantity} ${r.missingUnit}`).sort()).toEqual(['20 g', '3 čen']);
+    expect(new Set(rows.map((r) => r.key)).size).toBe(2);
   });
 
   it('Test 9: Same ingredient in multiple recipes aggregated correctly', () => {

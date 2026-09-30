@@ -14,7 +14,7 @@ export function EmojiBadge({
   name?: string;
   shape?: 'circle' | 'rounded';
 }) {
-  const shaker = name ? getSaltShakerContents(name) : null;
+  const shaker = emoji === '🧂' && name ? getSaltShakerContents(name) : null;
 
   return (
     <View

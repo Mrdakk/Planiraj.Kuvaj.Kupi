@@ -89,8 +89,10 @@ export function SuggestMealSheet({
           />
         ) : (
           <SheetFooter
+            cancelLabel="Zatvori"
+            onCancel={onClose}
             confirmLabel="Nazad na filtere"
-            confirmVariant="ghost"
+            confirmVariant="secondary"
             onConfirm={() => setStep('filters')}
           />
         )

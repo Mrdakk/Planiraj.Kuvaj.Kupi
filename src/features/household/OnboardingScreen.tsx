@@ -1,11 +1,15 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
-import { Pressable, StyleSheet, Text, View } from 'react-native';
+import { StyleSheet, Text, View } from 'react-native';
 import { CameraView, useCameraPermissions } from 'expo-camera';
 import * as Linking from 'expo-linking';
+import * as Network from 'expo-network';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { Button } from '@/components/ui/Button';
+import { EmptyState } from '@/components/ui/EmptyState';
 import { Input } from '@/components/ui/Input';
-import { colors, spacing, typography } from '@/constants/theme';
+import { borderRadius, colors, spacing, typography } from '@/constants/theme';
+import { isSupabaseConfigured } from '@/lib/supabase';
+import { useAppStore } from '@/store/appStore';
 import { createHousehold, joinHousehold } from './service';
 import { parseJoinPayload } from './membership';
 
@@ -22,6 +26,9 @@ export function OnboardingScreen({ onComplete }: OnboardingScreenProps) {
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
   const [permission, requestPermission] = useCameraPermissions();
+  const [checking, setChecking] = useState(false);
+  const isOnline = useAppStore((state) => state.isOnline);
+  const setIsOnline = useAppStore((state) => state.setIsOnline);
   const handledScan = useRef(false);
 
   const submitJoin = useCallback(
@@ -87,6 +94,47 @@ export function OnboardingScreen({ onComplete }: OnboardingScreenProps) {
     setStep('choice');
   }
 
+  const blocker = !isSupabaseConfigured
+    ? {
+        icon: 'construct-outline' as const,
+        title: 'Aplikacija nije podešena',
+        message:
+          'Ovoj instalaciji fale podaci za povezivanje sa serverom. Instaliraj novu verziju aplikacije.',
+      }
+    : !isOnline
+      ? {
+          icon: 'cloud-offline-outline' as const,
+          title: 'Nema interneta',
+          message:
+            'Za prvo pokretanje treba internet, da se napravi ili pronađe tvoja porodica. Posle toga aplikacija radi i bez mreže.',
+        }
+      : null;
+
+  const recheckNetwork = async () => {
+    setChecking(true);
+    try {
+      const state = await Network.getNetworkStateAsync();
+      setIsOnline(state.isConnected ?? false);
+    } finally {
+      setChecking(false);
+    }
+  };
+
+  if (blocker && step !== 'name') {
+    return (
+      <SafeAreaView style={styles.container} edges={['top', 'bottom']}>
+        <EmptyState
+          icon={blocker.icon}
+          title={blocker.title}
+          message={blocker.message}
+          actionTitle={checking ? 'Proveravam...' : 'Pokušaj ponovo'}
+          onAction={() => void recheckNetwork()}
+        />
+        <Button title="Nazad" variant="ghost" onPress={() => setStep('name')} />
+      </SafeAreaView>
+    );
+  }
+
   return (
     <SafeAreaView style={styles.container} edges={['top', 'bottom']}>
       {step === 'name' ? (
@@ -135,8 +183,16 @@ export function OnboardingScreen({ onComplete }: OnboardingScreenProps) {
 
           {!permission?.granted ? (
             <View style={styles.content}>
-              <Text style={styles.subtitle}>Treba nam kamera samo za QR kod.</Text>
-              <Button title="Dozvoli kameru" onPress={() => void requestPermission()} />
+              <Text style={styles.subtitle}>
+                {permission && !permission.canAskAgain
+                  ? 'Kamera je isključena za ovu aplikaciju. Uključi je u podešavanjima telefona ili unesi kod ispod.'
+                  : 'Treba nam kamera samo za QR kod.'}
+              </Text>
+              {permission && !permission.canAskAgain ? (
+                <Button title="Otvori podešavanja" onPress={() => void Linking.openSettings()} />
+              ) : (
+                <Button title="Dozvoli kameru" onPress={() => void requestPermission()} />
+              )}
             </View>
           ) : (
             <CameraView
@@ -166,9 +222,7 @@ export function OnboardingScreen({ onComplete }: OnboardingScreenProps) {
               onPress={() => void submitJoin(manualCode)}
               loading={busy}
             />
-            <Pressable onPress={() => setStep('choice')} disabled={busy}>
-              <Text style={styles.back}>Nazad</Text>
-            </Pressable>
+            <Button title="Nazad" variant="ghost" onPress={() => setStep('choice')} disabled={busy} />
           </View>
         </View>
       ) : null}
@@ -204,17 +258,11 @@ const styles = StyleSheet.create({
   },
   camera: {
     flex: 1,
-    borderRadius: 16,
+    borderRadius: borderRadius.xl,
     overflow: 'hidden',
     minHeight: 240,
   },
   manual: {
     gap: spacing.sm,
-  },
-  back: {
-    ...typography.button,
-    color: colors.primary,
-    textAlign: 'center',
-    paddingVertical: spacing.md,
   },
 });

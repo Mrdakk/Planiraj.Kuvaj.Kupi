@@ -1,47 +1,49 @@
 import { useState } from 'react';
-import { useRouter } from 'expo-router';
-import { StyleSheet, Text, View } from 'react-native';
+import { Stack, useRouter } from 'expo-router';
+import { ScrollView, StyleSheet, Text, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { Picker } from '@react-native-picker/picker';
 import { useQueryClient } from '@tanstack/react-query';
 import { colors, typography, spacing, borderRadius } from '@/constants/theme';
 import { Button } from '@/components/ui/Button';
+import { ConfirmSheet } from '@/components/ui/ConfirmSheet';
 import { Input } from '@/components/ui/Input';
-import { useShoppingList } from '@/hooks/useShoppingList';
+import { UnitPicker } from '@/components/ui/UnitPicker';
 import { addManualShoppingItem, ensureShoppingList } from '@/features/shopping/service';
-import { queryKeys } from '@/hooks/queryKeys';
+import { invalidateAfterShoppingChange } from '@/hooks/invalidate';
 import { usePlanWeek } from '@/hooks/usePlanWeek';
-import { allUnits, type Unit } from '@/constants/units';
-import { parseQuantity } from '@/lib/formatQuantity';
+import type { Unit } from '@/constants/units';
+import { parsePositiveQuantity } from '@/lib/formatQuantity';
+import { errorMessage } from '@/lib/errorMessage';
 import { groceryStoreSections, type GroceryStoreSection } from '@/constants/categories';
 
 export default function CreateShoppingItemScreen() {
   const router = useRouter();
   const queryClient = useQueryClient();
   const { weekStart } = usePlanWeek();
-  const { data: list } = useShoppingList(weekStart);
 
   const [name, setName] = useState('');
-  const [quantity, setQuantity] = useState('');
+  const [quantity, setQuantity] = useState('1');
   const [unit, setUnit] = useState<Unit>('kom');
   const [category, setCategory] = useState<GroceryStoreSection>('Ostalo');
   const [loading, setLoading] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+
+  const parsedQuantity = parsePositiveQuantity(quantity);
+  const quantityError =
+    quantity.trim() && parsedQuantity === null ? 'Količina mora biti veća od 0.' : undefined;
+  const canSubmit = !!name.trim() && parsedQuantity !== null && !loading;
 
   const handleSubmit = async () => {
-    if (!name.trim() || !quantity.trim()) return;
+    if (!canSubmit || parsedQuantity === null) return;
     setLoading(true);
     try {
-      const shoppingList = list ?? (await ensureShoppingList(weekStart));
-      await addManualShoppingItem(
-        shoppingList.id,
-        name.trim(),
-        parseQuantity(quantity),
-        unit,
-        category
-      );
-      await queryClient.invalidateQueries({ queryKey: queryKeys.shoppingLists });
-      await queryClient.invalidateQueries({ queryKey: queryKeys.shoppingItems(shoppingList.id) });
+      const shoppingList = await ensureShoppingList(weekStart);
+      await addManualShoppingItem(shoppingList.id, name.trim(), parsedQuantity, unit, category);
+      await invalidateAfterShoppingChange(queryClient);
       router.back();
+    } catch (err) {
+      setError(errorMessage(err));
     } finally {
       setLoading(false);
     }
@@ -49,13 +51,9 @@ export default function CreateShoppingItemScreen() {
 
   return (
     <SafeAreaView style={styles.container} edges={['bottom']}>
-      <View style={styles.content}>
-        <Input
-          label="Naziv"
-          value={name}
-          onChangeText={setName}
-          placeholder="npr. hleb"
-        />
+      <Stack.Screen options={{ title: 'Dodaj stavku' }} />
+      <ScrollView contentContainerStyle={styles.content} keyboardShouldPersistTaps="handled">
+        <Input label="Naziv" value={name} onChangeText={setName} placeholder="npr. hleb" />
 
         <View style={styles.row}>
           <View style={styles.half}>
@@ -64,42 +62,43 @@ export default function CreateShoppingItemScreen() {
               value={quantity}
               onChangeText={setQuantity}
               placeholder="npr. 1"
-              keyboardType="numeric"
+              keyboardType="decimal-pad"
+              error={quantityError}
             />
           </View>
           <View style={styles.half}>
-            <Text style={styles.label}>Jedinica</Text>
-            <View style={styles.pickerContainer}>
-              <Picker dropdownIconColor={colors.text} style={{ color: colors.text }} selectedValue={unit} onValueChange={(value) => setUnit(value as Unit)}>
-                {allUnits.map((u) => (
-                  <Picker.Item color={colors.text} key={u} label={u} value={u} />
-                ))}
-              </Picker>
-            </View>
+            <UnitPicker value={unit} onChange={setUnit} />
           </View>
         </View>
 
-        <Text style={styles.label}>Kategorija</Text>
+        <Text style={styles.label}>Deo prodavnice</Text>
         <View style={styles.pickerContainer}>
           <Picker
             dropdownIconColor={colors.text}
-            style={{ color: colors.text }}
+            style={styles.picker}
             selectedValue={category}
             onValueChange={(value) => setCategory(value as GroceryStoreSection)}
           >
-            {groceryStoreSections.map((s) => (
-              <Picker.Item color={colors.text} key={s} label={s} value={s} />
+            {groceryStoreSections.map((section) => (
+              <Picker.Item color={colors.text} key={section} label={section} value={section} />
             ))}
           </Picker>
         </View>
 
-        <Button
-          title="Dodaj u listu"
-          onPress={handleSubmit}
-          loading={loading}
-          disabled={!name.trim() || !quantity.trim()}
-        />
-      </View>
+        <Text style={styles.hint}>Kad označiš kao kupljeno, stavka ide i u kuhinju.</Text>
+
+        <Button title="Dodaj u listu" onPress={handleSubmit} loading={loading} disabled={!canSubmit} />
+      </ScrollView>
+      <ConfirmSheet
+        visible={error !== null}
+        title="Stavka nije dodata"
+        message={error ?? ''}
+        confirmLabel="U redu"
+        variant="warning"
+        hideCancel
+        onConfirm={() => setError(null)}
+        onCancel={() => setError(null)}
+      />
     </SafeAreaView>
   );
 }
@@ -123,13 +122,19 @@ const styles = StyleSheet.create({
   label: {
     ...typography.bodySmall,
     color: colors.textSecondary,
-    marginBottom: spacing.xs,
+    marginBottom: -spacing.sm,
+  },
+  hint: {
+    ...typography.caption,
+    color: colors.textSecondary,
   },
   pickerContainer: {
     backgroundColor: colors.surface,
     borderRadius: borderRadius.md,
     borderWidth: 1,
     borderColor: colors.border,
-    marginBottom: spacing.md,
+  },
+  picker: {
+    color: colors.text,
   },
 });

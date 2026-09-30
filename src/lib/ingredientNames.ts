@@ -1,3 +1,5 @@
+import { foldSearchText } from './foldSearchText';
+
 const UUID_PATTERN =
   /^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
 
@@ -23,9 +25,10 @@ export function displayIngredientName(name: string | null | undefined): string {
 }
 
 export function ingredientMatchesSearch(name: string, term: string): boolean {
-  const t = term.trim().toLowerCase();
+  const t = foldSearchText(term);
   if (!t) return true;
-  const display = displayIngredientName(name).toLowerCase();
-  if (display.includes(t) || name.toLowerCase().includes(t)) return true;
-  return ingredientNameKey(name) === ingredientNameKey(t);
+  if (foldSearchText(displayIngredientName(name)).includes(t) || foldSearchText(name).includes(t)) {
+    return true;
+  }
+  return ingredientNameKey(name) === ingredientNameKey(term);
 }

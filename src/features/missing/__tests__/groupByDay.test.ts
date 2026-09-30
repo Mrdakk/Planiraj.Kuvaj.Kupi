@@ -130,4 +130,75 @@ describe('groupMissingByDay', () => {
     expect(calculation.shoppingList).toHaveLength(1);
     expect(calculation.shoppingList[0]?.quantity).toBe(8);
   });
+
+  it('uses pantry for the earliest meals so day totals add up to what is missing', () => {
+    const rice = createIngredient({ id: 'ing-rice', name: 'Pirinač', defaultUnit: 'g' });
+    const recipe = createRecipe({ id: 'rec-rice', name: 'Rižoto', baseServings: 4 });
+    const meals = [
+      createMeal({ id: 'meal-fri', recipeId: 'rec-rice', date: '2026-09-05' }),
+      createMeal({ id: 'meal-mon', recipeId: 'rec-rice', date: '2026-09-01' }),
+    ];
+    const input: CalculationInput = {
+      ingredients: [rice],
+      recipes: [recipe],
+      recipeIngredients: [
+        createRecipeIngredient({ recipeId: 'rec-rice', ingredientId: 'ing-rice', quantity: 500, unit: 'g' }),
+      ],
+      meals,
+      pantryItems: [
+        {
+          id: 'p-1',
+          ingredientId: 'ing-rice',
+          quantity: 400,
+          unit: 'g',
+          expiresAt: null,
+          notes: null,
+          createdAt: '2024-01-01T00:00:00Z',
+          updatedAt: '2024-01-01T00:00:00Z',
+        },
+      ],
+    };
+
+    const calculation = calculate(input);
+    const byDay = groupMissingByDay(calculation.missing, meals, [recipe]);
+
+    expect(byDay.map((day) => [day.date, day.recipes[0]?.items[0]?.quantity])).toEqual([
+      ['2026-09-01', 100],
+      ['2026-09-05', 500],
+    ]);
+  });
+
+  it('drops a day whose meals are fully covered by pantry', () => {
+    const rice = createIngredient({ id: 'ing-rice', name: 'Pirinač', defaultUnit: 'g' });
+    const recipe = createRecipe({ id: 'rec-rice', name: 'Rižoto', baseServings: 4 });
+    const meals = [
+      createMeal({ id: 'meal-mon', recipeId: 'rec-rice', date: '2026-09-01' }),
+      createMeal({ id: 'meal-fri', recipeId: 'rec-rice', date: '2026-09-05' }),
+    ];
+    const calculation = calculate({
+      ingredients: [rice],
+      recipes: [recipe],
+      recipeIngredients: [
+        createRecipeIngredient({ recipeId: 'rec-rice', ingredientId: 'ing-rice', quantity: 500, unit: 'g' }),
+      ],
+      meals,
+      pantryItems: [
+        {
+          id: 'p-1',
+          ingredientId: 'ing-rice',
+          quantity: 700,
+          unit: 'g',
+          expiresAt: null,
+          notes: null,
+          createdAt: '2024-01-01T00:00:00Z',
+          updatedAt: '2024-01-01T00:00:00Z',
+        },
+      ],
+    });
+    const byDay = groupMissingByDay(calculation.missing, meals, [recipe]);
+
+    expect(byDay.map((day) => [day.date, day.recipes[0]?.items[0]?.quantity])).toEqual([
+      ['2026-09-05', 300],
+    ]);
+  });
 });

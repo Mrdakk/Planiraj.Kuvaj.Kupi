@@ -1,12 +1,9 @@
-export const MEAL_COOKED_SURFACE = '#EEF2E8';
-export const MEAL_PENDING_SURFACE = '#FFFBF6';
-export const MEAL_COOKED_SURFACE_PRESSED = '#E2E8D8';
-export const MEAL_PENDING_SURFACE_PRESSED = '#F4EFE6';
+import { colors } from '@/constants/theme';
 
 export function mealSurface(isCooked: boolean): string {
-  return isCooked ? MEAL_COOKED_SURFACE : MEAL_PENDING_SURFACE;
+  return isCooked ? colors.cookedSurface : colors.surface;
 }
 
 export function mealSurfacePressed(isCooked: boolean): string {
-  return isCooked ? MEAL_COOKED_SURFACE_PRESSED : MEAL_PENDING_SURFACE_PRESSED;
+  return isCooked ? colors.cookedSurfacePressed : colors.surfacePressed;
 }

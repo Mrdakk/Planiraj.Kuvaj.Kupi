@@ -1,19 +1,10 @@
-import {
-  shoppingListRepository,
-  shoppingItemRepository,
-  mealPlanRepository,
-  mealRepository,
-  recipeRepository,
-  recipeIngredientRepository,
-  pantryItemRepository,
-  ingredientRepository,
-} from '@/services/repositories';
-import { calculate } from '@/calculations/engine';
+import { shoppingListRepository, shoppingItemRepository } from '@/services/repositories';
+import { unitBucket } from '@/calculations/engine';
 import { generateUUID } from '@/lib/uuid';
 import { nowISO } from '@/database/repository';
 import { formatDisplayDate } from '@/lib/dates';
 import type { ShoppingItem, ShoppingList } from '@/types';
-import type { Unit } from '@/constants/units';
+import { convertQuantity, type Unit } from '@/constants/units';
 import type { GroceryStoreSection } from '@/constants/categories';
 import type {
   ShoppingAddConflict,
@@ -29,9 +20,12 @@ export type {
   ShoppingConflictMode,
 };
 
-function itemMatchKey(ingredientId: string, unit: Unit): string {
-  return `${ingredientId}:${unit}`;
+/** Same ingredient in convertible units (g/kg) is one shopping item. */
+export function shoppingMatchKey(ingredientId: string, unit: Unit): string {
+  return `${ingredientId}:${unitBucket(unit)}`;
 }
+
+const itemMatchKey = shoppingMatchKey;
 
 function mergeSourceMealIds(current: string[], incoming: string[]): string[] {
   return Array.from(new Set([...current, ...incoming]));
@@ -49,74 +43,6 @@ export async function ensureShoppingList(weekStart: string): Promise<ShoppingLis
     updatedAt: nowISO(),
   };
   await shoppingListRepository.insert(list);
-  return list;
-}
-
-export async function generateShoppingList(weekStart: string): Promise<ShoppingList> {
-  const list = await ensureShoppingList(weekStart);
-
-  const plans = await mealPlanRepository.findManyWhere('week_start = ?', [weekStart]);
-  const plan = plans[0] ?? null;
-
-  const [meals, recipes, recipeIngredients, pantryItems, ingredients] = await Promise.all([
-    plan ? mealRepository.findManyWhere('meal_plan_id = ?', [plan.id]) : [],
-    recipeRepository.findAll(),
-    recipeIngredientRepository.findAll(),
-    pantryItemRepository.findAll(),
-    ingredientRepository.findAll(),
-  ]);
-
-  const calculation = calculate({
-    ingredients,
-    recipes,
-    recipeIngredients,
-    meals,
-    pantryItems,
-  });
-
-  // Remove existing non-manual items for this list.
-  const existingItems = await shoppingItemRepository.findManyWhere(
-    'shopping_list_id = ? AND is_manual = 0',
-    [list.id]
-  );
-  for (const item of existingItems) {
-    await shoppingItemRepository.delete(item.id);
-  }
-
-  const unique = new Map<string, (typeof calculation.shoppingList)[number]>();
-  for (const item of calculation.shoppingList) {
-    const key = `${item.ingredientId ?? item.name.toLowerCase()}:${item.unit}`;
-    const existing = unique.get(key);
-    if (existing) {
-      unique.set(key, {
-        ...existing,
-        quantity: existing.quantity + item.quantity,
-        sourceMealIds: Array.from(new Set([...existing.sourceMealIds, ...item.sourceMealIds])),
-      });
-    } else {
-      unique.set(key, item);
-    }
-  }
-
-  for (const item of unique.values()) {
-    const shoppingItem: ShoppingItem = {
-      id: generateUUID(),
-      shoppingListId: list.id,
-      ingredientId: item.ingredientId,
-      name: item.name,
-      quantity: item.quantity,
-      unit: item.unit,
-      category: item.category as GroceryStoreSection,
-      isChecked: false,
-      isManual: false,
-      sourceMealIds: item.sourceMealIds,
-      notes: null,
-      createdAt: nowISO(),
-      updatedAt: nowISO(),
-    };
-    await shoppingItemRepository.insert(shoppingItem);
-  }
-
   return list;
 }
 
@@ -193,7 +119,8 @@ export async function applyAddToShopping(
     if (existing && conflictMode === 'merge') {
       const updated: ShoppingItem = {
         ...existing,
-        quantity: existing.quantity + line.quantity,
+        quantity:
+          existing.quantity + (convertQuantity(line.quantity, line.unit, existing.unit) ?? line.quantity),
         sourceMealIds: mergeSourceMealIds(existing.sourceMealIds, line.sourceMealIds),
         updatedAt: now,
       };
@@ -239,12 +166,6 @@ export async function updateShoppingItemDetails(
     unit,
     updatedAt: nowISO(),
   };
-  await shoppingItemRepository.update(updated);
-  return updated;
-}
-
-export async function toggleShoppingItemChecked(item: ShoppingItem): Promise<ShoppingItem> {
-  const updated: ShoppingItem = { ...item, isChecked: !item.isChecked, updatedAt: nowISO() };
   await shoppingItemRepository.update(updated);
   return updated;
 }

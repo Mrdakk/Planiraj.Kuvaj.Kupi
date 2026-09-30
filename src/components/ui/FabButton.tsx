@@ -1,21 +1,33 @@
 import type { ReactNode } from 'react';
-import { Pressable, StyleSheet, Text, View } from 'react-native';
-import { colors, shadows, spacing, typography } from '@/constants/theme';
+import { ActivityIndicator, Pressable, StyleSheet, Text, View } from 'react-native';
+import { borderRadius, colors, layout, shadows, spacing, typography } from '@/constants/theme';
 
 export function FabButton({
   title,
   onPress,
+  loading = false,
   children,
 }: {
   title: string;
   onPress: () => void;
+  loading?: boolean;
   children?: ReactNode;
 }) {
   return (
     <View style={styles.wrap} pointerEvents="box-none">
       {children}
-      <Pressable onPress={onPress} style={({ pressed }) => [styles.fab, pressed && styles.pressed]}>
-        <Text style={styles.text}>{title}</Text>
+      <Pressable
+        onPress={onPress}
+        disabled={loading}
+        accessibilityRole="button"
+        accessibilityState={{ busy: loading }}
+        style={({ pressed }) => [styles.fab, (pressed || loading) && styles.pressed]}
+      >
+        {loading ? (
+          <ActivityIndicator color={colors.onPrimary} />
+        ) : (
+          <Text style={styles.text}>{title}</Text>
+        )}
       </Pressable>
     </View>
   );
@@ -31,8 +43,8 @@ const styles = StyleSheet.create({
   },
   fab: {
     backgroundColor: colors.primary,
-    borderRadius: 28,
-    minHeight: 52,
+    borderRadius: borderRadius.full,
+    minHeight: layout.fabHeight,
     alignItems: 'center',
     justifyContent: 'center',
     ...shadows.lg,

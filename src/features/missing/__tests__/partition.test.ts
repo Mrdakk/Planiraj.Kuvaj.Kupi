@@ -17,6 +17,7 @@ function missing(overrides: Partial<CalculationResult>): CalculationResult {
     trackPresence: false,
     meals: [],
     ...overrides,
+    key: overrides.key ?? overrides.ingredientId ?? 'ing-1',
   };
 }
 

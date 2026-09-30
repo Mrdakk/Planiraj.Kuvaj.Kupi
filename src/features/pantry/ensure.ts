@@ -7,7 +7,7 @@ import { generateUUID } from '@/lib/uuid';
 import { nowISO } from '@/database/repository';
 import { presenceQuantity, tracksPresence } from '@/features/pantry/presence';
 import type { PantryItem } from '@/types';
-import type { Unit } from '@/constants/units';
+import { isUnitCompatible, type Unit } from '@/constants/units';
 
 function pantryItemFor(ingredientId: string, unit: Unit, quantity: number): PantryItem {
   const now = nowISO();
@@ -23,14 +23,22 @@ function pantryItemFor(ingredientId: string, unit: Unit, quantity: number): Pant
   };
 }
 
+/**
+ * Kitchen row that can take `unit`: one with a convertible unit, else an empty
+ * one, else a new row. Presence-tracked ingredients always reuse their row.
+ */
 export async function ensurePantryPresence(
   ingredientId: string,
   unit: Unit
 ): Promise<PantryItem> {
   const existing = await pantryItemRepository.findManyWhere('ingredient_id = ?', [ingredientId]);
-  if (existing.length > 0) return existing[0];
-
   const ingredient = await ingredientRepository.findById(ingredientId);
+  const reusable =
+    existing.find((item) => isUnitCompatible(item.unit, unit)) ??
+    existing.find((item) => item.quantity <= 0) ??
+    (tracksPresence(ingredient) ? existing[0] : undefined);
+  if (reusable) return reusable;
+
   const item = pantryItemFor(
     ingredientId,
     unit,

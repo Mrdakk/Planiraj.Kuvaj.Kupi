@@ -2,19 +2,20 @@ import { useEffect, useState } from 'react';
 import { useLocalSearchParams, useRouter, Stack } from 'expo-router';
 import { StyleSheet, Text, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
-import { Picker } from '@react-native-picker/picker';
 import { useQueryClient } from '@tanstack/react-query';
-import { colors, typography, spacing, borderRadius } from '@/constants/theme';
+import { colors, typography, spacing } from '@/constants/theme';
 import { Button } from '@/components/ui/Button';
 import { ConfirmSheet } from '@/components/ui/ConfirmSheet';
 import { EmptyState } from '@/components/ui/EmptyState';
 import { Input } from '@/components/ui/Input';
+import { UnitPicker } from '@/components/ui/UnitPicker';
 import { useDeleteShoppingItem, useShoppingItem } from '@/hooks/useShoppingList';
 import { updateShoppingItemDetails } from '@/features/shopping/service';
-import { queryKeys } from '@/hooks/queryKeys';
-import { allUnits, type Unit } from '@/constants/units';
-import { formatQuantity, parseQuantity } from '@/lib/formatQuantity';
+import { invalidateAfterShoppingChange } from '@/hooks/invalidate';
+import type { Unit } from '@/constants/units';
+import { formatEditableQuantity, parsePositiveQuantity } from '@/lib/formatQuantity';
 import { displayIngredientName } from '@/lib/ingredientNames';
+import { errorMessage } from '@/lib/errorMessage';
 
 export default function EditShoppingItemScreen() {
   const { id } = useLocalSearchParams<{ id: string }>();
@@ -27,24 +28,28 @@ export default function EditShoppingItemScreen() {
   const [unit, setUnit] = useState<Unit>('kom');
   const [saving, setSaving] = useState(false);
   const [confirmDelete, setConfirmDelete] = useState(false);
+  const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
     if (!item) return;
-    setQuantity(formatQuantity(item.quantity));
+    setQuantity(formatEditableQuantity(item.quantity));
     setUnit(item.unit);
   }, [item?.id]);
 
   const name = displayIngredientName(item?.name);
-  const screenOptions = { title: name || 'Stavka' };
+  const parsedQuantity = parsePositiveQuantity(quantity);
+  const quantityError =
+    quantity.trim() && parsedQuantity === null ? 'Količina mora biti veća od 0.' : undefined;
 
   const handleSave = async () => {
-    if (!item || !quantity.trim()) return;
+    if (!item || parsedQuantity === null || saving) return;
     setSaving(true);
     try {
-      await updateShoppingItemDetails(item, parseQuantity(quantity), unit);
-      await queryClient.invalidateQueries({ queryKey: queryKeys.shoppingItems(item.shoppingListId) });
-      await queryClient.invalidateQueries({ queryKey: queryKeys.shoppingItem(item.id) });
+      await updateShoppingItemDetails(item, parsedQuantity, unit);
+      await invalidateAfterShoppingChange(queryClient);
       router.back();
+    } catch (err) {
+      setError(errorMessage(err));
     } finally {
       setSaving(false);
     }
@@ -52,9 +57,14 @@ export default function EditShoppingItemScreen() {
 
   const handleDelete = async () => {
     if (!item) return;
-    await deleteItem.mutateAsync(item);
-    setConfirmDelete(false);
-    router.back();
+    try {
+      await deleteItem.mutateAsync(item);
+      setConfirmDelete(false);
+      router.back();
+    } catch (err) {
+      setConfirmDelete(false);
+      setError(errorMessage(err));
+    }
   };
 
   if (isLoading) {
@@ -70,14 +80,19 @@ export default function EditShoppingItemScreen() {
     return (
       <SafeAreaView style={styles.container} edges={['bottom']}>
         <Stack.Screen options={{ title: 'Stavka' }} />
-        <EmptyState title="Stavka nije pronađena" message="" />
+        <EmptyState
+          title="Stavka nije pronađena"
+          message="Možda je već kupljena ili obrisana."
+          actionTitle="Nazad"
+          onAction={() => router.back()}
+        />
       </SafeAreaView>
     );
   }
 
   return (
     <SafeAreaView style={styles.container} edges={['bottom']}>
-      <Stack.Screen options={screenOptions} />
+      <Stack.Screen options={{ title: name || 'Stavka' }} />
       <View style={styles.content}>
         <View style={styles.row}>
           <View style={styles.half}>
@@ -86,18 +101,12 @@ export default function EditShoppingItemScreen() {
               value={quantity}
               onChangeText={setQuantity}
               placeholder="npr. 1"
-              keyboardType="numeric"
+              keyboardType="decimal-pad"
+              error={quantityError}
             />
           </View>
           <View style={styles.half}>
-            <Text style={styles.label}>Jedinica</Text>
-            <View style={styles.pickerContainer}>
-              <Picker dropdownIconColor={colors.text} style={{ color: colors.text }} selectedValue={unit} onValueChange={(value) => setUnit(value as Unit)}>
-                {allUnits.map((option) => (
-                  <Picker.Item color={colors.text} key={option} label={option} value={option} />
-                ))}
-              </Picker>
-            </View>
+            <UnitPicker value={unit} onChange={setUnit} />
           </View>
         </View>
 
@@ -105,7 +114,7 @@ export default function EditShoppingItemScreen() {
           title="Sačuvaj izmene"
           onPress={handleSave}
           loading={saving}
-          disabled={!quantity.trim()}
+          disabled={parsedQuantity === null}
         />
         <Button title="Obriši stavku" onPress={() => setConfirmDelete(true)} variant="danger" />
       </View>
@@ -116,8 +125,19 @@ export default function EditShoppingItemScreen() {
         message={`${name} nestaje sa liste. Ovo se ne može opozvati.`}
         confirmLabel="Obriši"
         variant="danger"
+        loading={deleteItem.isPending}
         onConfirm={handleDelete}
         onCancel={() => setConfirmDelete(false)}
+      />
+      <ConfirmSheet
+        visible={error !== null}
+        title="Nije sačuvano"
+        message={error ?? ''}
+        confirmLabel="U redu"
+        variant="warning"
+        hideCancel
+        onConfirm={() => setError(null)}
+        onCancel={() => setError(null)}
       />
     </SafeAreaView>
   );
@@ -143,17 +163,5 @@ const styles = StyleSheet.create({
   },
   half: {
     flex: 1,
-  },
-  label: {
-    ...typography.bodySmall,
-    color: colors.textSecondary,
-    marginBottom: spacing.xs,
-  },
-  pickerContainer: {
-    backgroundColor: colors.surface,
-    borderRadius: borderRadius.md,
-    borderWidth: 1,
-    borderColor: colors.border,
-    marginBottom: spacing.md,
   },
 });

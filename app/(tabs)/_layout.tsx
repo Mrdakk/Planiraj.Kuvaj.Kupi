@@ -1,6 +1,6 @@
 import { Tabs } from 'expo-router';
 import Ionicons from '@expo/vector-icons/Ionicons';
-import { colors, typography } from '@/constants/theme';
+import { colors, layout, spacing, typography } from '@/constants/theme';
 import { tabLabels } from '@/constants/routes';
 
 type IconName = keyof typeof Ionicons.glyphMap;
@@ -34,9 +34,9 @@ export default function TabLayout() {
           borderTopWidth: 0,
           elevation: 0,
           shadowOpacity: 0,
-          height: 80,
-          paddingTop: 10,
-          paddingBottom: 12,
+          height: layout.tabBarHeight,
+          paddingTop: spacing.sm,
+          paddingBottom: spacing.md,
         },
         tabBarLabelStyle: {
           ...typography.caption,

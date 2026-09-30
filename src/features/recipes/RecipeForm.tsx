@@ -1,5 +1,13 @@
 import { useState } from 'react';
-import { ScrollView, StyleSheet, Text, View, Pressable } from 'react-native';
+import {
+  KeyboardAvoidingView,
+  Platform,
+  ScrollView,
+  StyleSheet,
+  Text,
+  View,
+  Pressable,
+} from 'react-native';
 import { Picker } from '@react-native-picker/picker';
 import { Button } from '@/components/ui/Button';
 import { ChipToggleRow } from '@/components/ui/ChipRow';
@@ -7,41 +15,27 @@ import { Input } from '@/components/ui/Input';
 import { Card } from '@/components/ui/Card';
 import { allUnits, type Unit } from '@/constants/units';
 import { dishTypes, mealTypes, type DishType, type MealType } from '@/constants/categories';
-import { colors, spacing, typography } from '@/constants/theme';
+import { borderRadius, colors, spacing, typography } from '@/constants/theme';
 import { IngredientEditActions } from '@/features/ingredients/IngredientEditActions';
 import { IngredientPickerSheet } from '@/features/ingredients/IngredientPickerSheet';
 import { IngredientRenameSheet } from '@/features/ingredients/IngredientRenameSheet';
 import { useIngredients } from '@/hooks/useIngredients';
-import { formatQuantity } from '@/lib/formatQuantity';
+import { formatEditableQuantity } from '@/lib/formatQuantity';
 import { canonicalIngredientName, displayIngredientName } from '@/lib/ingredientNames';
+import {
+  recipeFormToInput,
+  type RecipeFormData,
+  type RecipeFormErrors,
+  type RecipeFormIngredient,
+} from './recipeFormInput';
+import type { CreateRecipeInput } from './service';
 import type { Ingredient, RecipeWithIngredients } from '@/types';
 
-export interface RecipeFormIngredient {
-  id?: string;
-  ingredientId?: string;
-  rawName: string;
-  sourceName?: string;
-  linkToIngredientId?: string;
-  quantity: string;
-  unit: Unit;
-  notes: string;
-}
-
-export interface RecipeFormData {
-  name: string;
-  description: string;
-  baseServings: number;
-  prepTimeMinutes: number | undefined;
-  mealTypes: MealType[];
-  dishType: DishType | '';
-  steps: string;
-  notes: string;
-  ingredients: RecipeFormIngredient[];
-}
+export type { RecipeFormData, RecipeFormIngredient };
 
 interface RecipeFormProps {
   defaultValues?: RecipeWithIngredients;
-  onSubmit: (data: RecipeFormData) => void;
+  onSubmit: (input: CreateRecipeInput) => void;
   submitTitle: string;
   loading?: boolean;
 }
@@ -56,13 +50,15 @@ export function RecipeForm({
   const [selectedIndex, setSelectedIndex] = useState<number | null>(null);
   const [pickerOpen, setPickerOpen] = useState(false);
   const [renameOpen, setRenameOpen] = useState(false);
+  const [errors, setErrors] = useState<RecipeFormErrors>({ ingredientRows: {} });
   const [form, setForm] = useState<RecipeFormData>(() => {
     if (defaultValues) {
       return {
         name: defaultValues.name,
         description: defaultValues.description ?? '',
-        baseServings: defaultValues.baseServings,
-        prepTimeMinutes: defaultValues.prepTimeMinutes ?? undefined,
+        baseServings: formatEditableQuantity(defaultValues.baseServings),
+        prepTimeMinutes:
+          defaultValues.prepTimeMinutes != null ? String(defaultValues.prepTimeMinutes) : '',
         mealTypes: defaultValues.mealTypes.length > 0 ? defaultValues.mealTypes : ['Ručak'],
         dishType: defaultValues.dishType ?? '',
         steps: defaultValues.steps.join('\n'),
@@ -74,7 +70,7 @@ export function RecipeForm({
             ingredientId: i.ingredientId,
             rawName,
             sourceName: rawName,
-            quantity: formatQuantity(i.quantity),
+            quantity: formatEditableQuantity(i.quantity),
             unit: i.unit,
             notes: i.notes ?? '',
           };
@@ -84,8 +80,8 @@ export function RecipeForm({
     return {
       name: '',
       description: '',
-      baseServings: 4,
-      prepTimeMinutes: undefined,
+      baseServings: '4',
+      prepTimeMinutes: '',
       mealTypes: ['Ručak'],
       dishType: '',
       steps: '',
@@ -177,17 +173,27 @@ export function RecipeForm({
   };
 
   const handleSubmit = () => {
-    onSubmit(form);
+    const result = recipeFormToInput(form);
+    setErrors(result.errors);
+    if (result.input) onSubmit(result.input);
   };
 
+  const hasErrors =
+    !!(errors.name || errors.baseServings || errors.prepTimeMinutes || errors.ingredients) ||
+    Object.keys(errors.ingredientRows).length > 0;
+
   return (
-    <>
-    <ScrollView contentContainerStyle={styles.container}>
+    <KeyboardAvoidingView
+      style={styles.flex}
+      behavior={Platform.OS === 'ios' ? 'padding' : undefined}
+    >
+    <ScrollView contentContainerStyle={styles.container} keyboardShouldPersistTaps="handled">
       <Input
         label="Naziv recepta"
         value={form.name}
         onChangeText={(text) => updateField('name', text)}
         placeholder="npr. Pasta bolonjeze"
+        error={errors.name}
       />
 
       <Input
@@ -202,21 +208,21 @@ export function RecipeForm({
         <View style={styles.half}>
           <Input
             label="Broj porcija"
-            value={String(form.baseServings)}
-            onChangeText={(text) => updateField('baseServings', Number(text) || 0)}
+            value={form.baseServings}
+            onChangeText={(text) => updateField('baseServings', text)}
             placeholder="4"
-            keyboardType="numeric"
+            keyboardType="decimal-pad"
+            error={errors.baseServings}
           />
         </View>
         <View style={styles.half}>
           <Input
             label="Vreme pripreme (min)"
-            value={form.prepTimeMinutes !== undefined ? String(form.prepTimeMinutes) : ''}
-            onChangeText={(text) =>
-              updateField('prepTimeMinutes', text ? Number(text) : undefined)
-            }
+            value={form.prepTimeMinutes}
+            onChangeText={(text) => updateField('prepTimeMinutes', text)}
             placeholder="30"
-            keyboardType="numeric"
+            keyboardType="number-pad"
+            error={errors.prepTimeMinutes}
           />
         </View>
       </View>
@@ -260,6 +266,7 @@ export function RecipeForm({
 
       <Text style={styles.sectionTitle}>Sastojci</Text>
       <Text style={styles.hint}>Dodirni namirnicu za Preimenuj ili Poveži.</Text>
+      {errors.ingredients ? <Text style={styles.errorText}>{errors.ingredients}</Text> : null}
 
       {form.ingredients.map((ingredient, index) => {
         const name = displayIngredientName(ingredient.rawName);
@@ -296,7 +303,8 @@ export function RecipeForm({
                   value={ingredient.quantity}
                   onChangeText={(text) => updateIngredient(index, 'quantity', text)}
                   placeholder="npr. 600"
-                  keyboardType="numeric"
+                  keyboardType="decimal-pad"
+                  error={errors.ingredientRows[index]}
                 />
               </View>
               <View style={styles.half}>
@@ -337,6 +345,9 @@ export function RecipeForm({
       />
 
       <View style={styles.submitButton}>
+        {hasErrors ? (
+          <Text style={styles.errorText}>Proveri polja označena crvenom bojom.</Text>
+        ) : null}
         <Button title={submitTitle} onPress={handleSubmit} loading={loading} />
       </View>
     </ScrollView>
@@ -357,14 +368,22 @@ export function RecipeForm({
       initialName={selected?.rawName ?? ''}
       onSave={handleRename}
     />
-    </>
+    </KeyboardAvoidingView>
   );
 }
 
 const styles = StyleSheet.create({
+  flex: {
+    flex: 1,
+  },
   container: {
     padding: spacing.lg,
-    paddingBottom: 100,
+    paddingBottom: spacing.xxxl * 3,
+  },
+  errorText: {
+    ...typography.bodySmall,
+    color: colors.danger,
+    marginBottom: spacing.sm,
   },
   row: {
     flexDirection: 'row',
@@ -392,7 +411,7 @@ const styles = StyleSheet.create({
   },
   nameHit: {
     backgroundColor: colors.surfaceRaised,
-    borderRadius: 10,
+    borderRadius: borderRadius.md,
     borderWidth: 1,
     borderColor: colors.border,
     paddingHorizontal: spacing.md,
@@ -412,7 +431,7 @@ const styles = StyleSheet.create({
   },
   pickerContainer: {
     backgroundColor: colors.surface,
-    borderRadius: 10,
+    borderRadius: borderRadius.md,
     borderWidth: 1,
     borderColor: colors.border,
     marginBottom: spacing.md,

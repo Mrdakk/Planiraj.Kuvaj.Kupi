@@ -25,12 +25,21 @@ jest.mock('@/lib/uuid', () => ({
   generateUUID: () => 'pantry-new',
 }));
 
+jest.mock('@/features/recipes/service', () => ({
+  resolveOrCreateIngredient: jest.fn(),
+}));
+
 import {
   ingredientRepository,
   pantryItemRepository,
   shoppingItemRepository,
 } from '@/services/repositories';
+import { resolveOrCreateIngredient } from '@/features/recipes/service';
 import { addPurchasedQuantity, purchaseCheckedItems } from '../purchase';
+
+const resolveIngredient = resolveOrCreateIngredient as unknown as jest.Mock<
+  (...args: never[]) => Promise<{ ingredient: Ingredient }>
+>;
 
 const pantry = pantryItemRepository as unknown as {
   findManyWhere: jest.Mock<(...args: never[]) => Promise<PantryItem[]>>;
@@ -169,5 +178,42 @@ describe('purchaseCheckedItems', () => {
       expect.objectContaining({ id: 'pantry-onion', quantity: 1 })
     );
     expect(shopping.delete).toHaveBeenCalledWith('shop-onion');
+  });
+
+  it('keeps units that cannot convert in a separate kitchen row', async () => {
+    pantry.findManyWhere.mockResolvedValue([
+      pantryItem({ id: 'pantry-eggs', ingredientId: 'ing-eggs', quantity: 2, unit: 'kom' }),
+    ]);
+    ingredients.findAll.mockResolvedValue([ingredient({ id: 'ing-eggs', name: 'Jaja', defaultUnit: 'kom' })]);
+    ingredients.findById.mockResolvedValue(ingredient({ id: 'ing-eggs', name: 'Jaja', defaultUnit: 'kom' }));
+
+    await purchaseCheckedItems([
+      shoppingItem({ id: 'shop-eggs', ingredientId: 'ing-eggs', name: 'Jaja', quantity: 1, unit: 'pakovanje' }),
+    ]);
+
+    expect(pantry.update).not.toHaveBeenCalledWith(expect.objectContaining({ id: 'pantry-eggs' }));
+    expect(pantry.insert).toHaveBeenCalledWith(
+      expect.objectContaining({ ingredientId: 'ing-eggs', unit: 'pakovanje' })
+    );
+    expect(pantry.update).toHaveBeenCalledWith(
+      expect.objectContaining({ id: 'pantry-new', quantity: 1, unit: 'pakovanje' })
+    );
+  });
+
+  it('puts manually added items into the kitchen too', async () => {
+    const salt = ingredient({ id: 'ing-salt', name: 'So', defaultUnit: 'pakovanje' });
+    resolveIngredient.mockResolvedValue({ ingredient: salt });
+    pantry.findManyWhere.mockResolvedValue([]);
+    ingredients.findById.mockResolvedValue(salt);
+
+    await purchaseCheckedItems([
+      shoppingItem({ id: 'shop-salt', ingredientId: null, name: 'So', isManual: true, quantity: 1, unit: 'pakovanje' }),
+    ]);
+
+    expect(resolveIngredient).toHaveBeenCalledWith('So', 'pakovanje', 'Ostalo');
+    expect(pantry.update).toHaveBeenCalledWith(
+      expect.objectContaining({ ingredientId: 'ing-salt', quantity: 1, unit: 'pakovanje' })
+    );
+    expect(shopping.delete).toHaveBeenCalledWith('shop-salt');
   });
 });

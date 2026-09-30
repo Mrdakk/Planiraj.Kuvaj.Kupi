@@ -1,5 +1,5 @@
 import { Pressable, StyleSheet, Switch, Text, View } from 'react-native';
-import { colors, spacing, typography } from '@/constants/theme';
+import { colors, radii, spacing, typography } from '@/constants/theme';
 
 interface ToggleRowProps {
   label: string;
@@ -12,6 +12,10 @@ export function ToggleRow({ label, value, onValueChange, subtitle }: ToggleRowPr
   return (
     <Pressable
       onPress={() => onValueChange(!value)}
+      accessibilityRole="switch"
+      accessibilityLabel={label}
+      accessibilityHint={subtitle}
+      accessibilityState={{ checked: value }}
       style={({ pressed }) => [styles.row, pressed && styles.pressed]}
     >
       <View style={styles.text}>
@@ -22,7 +26,8 @@ export function ToggleRow({ label, value, onValueChange, subtitle }: ToggleRowPr
         value={value}
         onValueChange={onValueChange}
         trackColor={{ false: colors.border, true: colors.primary }}
-        thumbColor="#fff"
+        thumbColor={colors.switchThumb}
+        importantForAccessibility="no-hide-descendants"
       />
     </Pressable>
   );
@@ -34,7 +39,7 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     gap: spacing.md,
     backgroundColor: colors.sheet,
-    borderRadius: 16,
+    borderRadius: radii.card,
     borderWidth: 1,
     borderColor: colors.border,
     paddingHorizontal: spacing.md,
@@ -55,6 +60,6 @@ const styles = StyleSheet.create({
   subtitle: {
     ...typography.caption,
     color: colors.textMuted,
-    marginTop: 2,
+    marginTop: spacing.xxs,
   },
 });

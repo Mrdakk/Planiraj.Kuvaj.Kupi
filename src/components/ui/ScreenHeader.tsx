@@ -1,60 +1,84 @@
+import type { ReactNode } from 'react';
 import { Pressable, StyleSheet, Text, View } from 'react-native';
 import Ionicons from '@expo/vector-icons/Ionicons';
-import { colors, spacing, shadows, typography } from '@/constants/theme';
+import { colors, hit, iconSize, radii, spacing, shadows, typography } from '@/constants/theme';
 
 interface ScreenHeaderProps {
   title: string;
   subtitle?: string;
   onAdd?: () => void;
+  addLabel?: string;
   rightIcon?: keyof typeof Ionicons.glyphMap;
+  rightLabel?: string;
   onRightPress?: () => void;
+  /** Extra content under the title row, e.g. week navigation. */
+  children?: ReactNode;
 }
 
 export function ScreenHeader({
   title,
   subtitle,
   onAdd,
+  addLabel = 'Dodaj',
   rightIcon,
+  rightLabel,
   onRightPress,
+  children,
 }: ScreenHeaderProps) {
   return (
     <View style={styles.header}>
-      <View style={styles.titles}>
-        <Text style={styles.title} numberOfLines={1}>
-          {title}
-        </Text>
-        {subtitle ? (
-          <Text style={styles.subtitle} numberOfLines={1}>
-            {subtitle}
+      <View style={styles.row}>
+        <View style={styles.titles}>
+          <Text style={styles.title} numberOfLines={1} accessibilityRole="header">
+            {title}
           </Text>
+          {subtitle ? (
+            <Text style={styles.subtitle} numberOfLines={1}>
+              {subtitle}
+            </Text>
+          ) : null}
+        </View>
+        {onRightPress && rightIcon ? (
+          <Pressable
+            onPress={onRightPress}
+            style={styles.ghostButton}
+            accessibilityRole="button"
+            accessibilityLabel={rightLabel ?? title}
+          >
+            <Ionicons name={rightIcon} size={iconSize.md} color={colors.text} />
+          </Pressable>
+        ) : null}
+        {onAdd ? (
+          <Pressable
+            onPress={onAdd}
+            style={styles.iconButton}
+            accessibilityRole="button"
+            accessibilityLabel={addLabel}
+          >
+            <Ionicons name="add" size={iconSize.lg} color={colors.onPrimary} />
+          </Pressable>
         ) : null}
       </View>
-      {onRightPress && rightIcon ? (
-        <Pressable onPress={onRightPress} style={styles.ghostButton} hitSlop={12}>
-          <Ionicons name={rightIcon} size={22} color={colors.text} />
-        </Pressable>
-      ) : null}
-      {onAdd ? (
-        <Pressable onPress={onAdd} style={styles.iconButton} hitSlop={12}>
-          <Ionicons name="add" size={26} color={colors.onPrimary} />
-        </Pressable>
-      ) : null}
+      {children}
     </View>
   );
 }
 
 const styles = StyleSheet.create({
   header: {
+    paddingHorizontal: spacing.lg,
+    paddingTop: spacing.md,
+    paddingBottom: spacing.md,
+    gap: spacing.md,
+  },
+  row: {
     flexDirection: 'row',
     justifyContent: 'space-between',
     alignItems: 'center',
-    paddingHorizontal: spacing.lg,
-    paddingTop: spacing.md,
-    paddingBottom: spacing.sm,
+    gap: spacing.sm,
   },
   titles: {
     flex: 1,
-    marginRight: spacing.md,
   },
   title: {
     ...typography.h1,
@@ -63,19 +87,19 @@ const styles = StyleSheet.create({
   subtitle: {
     ...typography.bodySmall,
     color: colors.textSecondary,
-    marginTop: 2,
+    marginTop: spacing.xxs,
   },
   ghostButton: {
-    width: 40,
-    height: 40,
-    borderRadius: 20,
+    width: hit.min,
+    height: hit.min,
+    borderRadius: radii.pill,
     alignItems: 'center',
     justifyContent: 'center',
   },
   iconButton: {
-    width: 40,
-    height: 40,
-    borderRadius: 12,
+    width: hit.min,
+    height: hit.min,
+    borderRadius: radii.button,
     backgroundColor: colors.primary,
     alignItems: 'center',
     justifyContent: 'center',

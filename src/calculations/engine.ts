@@ -18,6 +18,8 @@ export interface MealBreakdown {
 }
 
 export interface CalculationResult {
+  /** Unique per ingredient and unit family; one ingredient may need both grams and pieces. */
+  key: string;
   ingredientId: UUID;
   ingredientName: string;
   category: string;
@@ -81,6 +83,7 @@ export function calculate(input: CalculationInput): CalculationOutput {
   const requiredByUnit = new Map<UUID, AggregatedRequirement[]>();
 
   for (const meal of input.meals) {
+    if (meal.isCooked) continue;
     const recipe = recipeById.get(meal.recipeId);
     if (!recipe) continue;
 
@@ -122,54 +125,58 @@ export function calculate(input: CalculationInput): CalculationOutput {
     const ingredient = ingredientById.get(ingredientId);
     if (!ingredient) continue;
 
-    const canonicalUnit = chooseCanonicalUnit(
-      requirements.map((r) => r.unit),
-      ingredient.defaultUnit
-    );
-
-    const requiredQuantity = sumConvertible(requirements, canonicalUnit);
     const ids = memberIdsFor(input.ingredients, ingredient);
-    const availableQuantity = sumPantry(
-      input.pantryItems.filter((p) => ids.has(p.ingredientId)),
-      canonicalUnit
-    );
+    const pantryForIngredient = input.pantryItems.filter((p) => ids.has(p.ingredientId));
     const presenceTracked = input.ingredients.some(
       (item) => ids.has(item.id) && item.trackPresence
     );
-    let missingQuantity = Math.max(0, requiredQuantity - availableQuantity);
-    let isMissing = missingQuantity > 0;
-    if (presenceTracked) {
-      const inStock = availableQuantity > 0;
-      missingQuantity = inStock ? 0 : requiredQuantity > 0 ? requiredQuantity : 1;
-      isMissing = !inStock;
-    }
+    const buckets = presenceTracked
+      ? [requirements]
+      : Array.from(groupBy(requirements, (r) => unitBucket(r.unit)).values());
 
-    const mealBreakdown: MealBreakdown[] = [];
-    for (const req of requirements) {
-      for (const meal of req.meals) {
-        const converted = convertQuantity(meal.quantity, meal.unit, canonicalUnit);
-        mealBreakdown.push({
-          mealId: meal.mealId,
-          quantity: converted ?? meal.quantity,
-          unit: converted !== null ? canonicalUnit : meal.unit,
-        });
+    for (const bucket of buckets) {
+      const canonicalUnit = chooseCanonicalUnit(
+        bucket.map((r) => r.unit),
+        ingredient.defaultUnit
+      );
+      const requiredQuantity = sumConvertible(bucket, canonicalUnit);
+      const availableQuantity = sumPantry(pantryForIngredient, canonicalUnit);
+      let missingQuantity = Math.max(0, requiredQuantity - availableQuantity);
+      let isMissing = missingQuantity > 0;
+      if (presenceTracked) {
+        const inStock = pantryForIngredient.some((p) => p.quantity > 0);
+        missingQuantity = inStock ? 0 : requiredQuantity > 0 ? requiredQuantity : 1;
+        isMissing = !inStock;
       }
-    }
 
-    results.push({
-      ingredientId,
-      ingredientName: canonicalIngredientName(ingredient.name),
-      category: ingredient.category,
-      requiredQuantity,
-      requiredUnit: canonicalUnit,
-      availableQuantity,
-      availableUnit: canonicalUnit,
-      missingQuantity,
-      missingUnit: canonicalUnit,
-      isMissing,
-      trackPresence: presenceTracked,
-      meals: mealBreakdown,
-    });
+      const mealBreakdown: MealBreakdown[] = [];
+      for (const req of bucket) {
+        for (const meal of req.meals) {
+          const converted = convertQuantity(meal.quantity, meal.unit, canonicalUnit);
+          mealBreakdown.push({
+            mealId: meal.mealId,
+            quantity: converted ?? meal.quantity,
+            unit: converted !== null ? canonicalUnit : meal.unit,
+          });
+        }
+      }
+
+      results.push({
+        key: presenceTracked ? ingredientId : `${ingredientId}:${unitBucket(canonicalUnit)}`,
+        ingredientId,
+        ingredientName: canonicalIngredientName(ingredient.name),
+        category: ingredient.category,
+        requiredQuantity,
+        requiredUnit: canonicalUnit,
+        availableQuantity,
+        availableUnit: canonicalUnit,
+        missingQuantity,
+        missingUnit: canonicalUnit,
+        isMissing,
+        trackPresence: presenceTracked,
+        meals: mealBreakdown,
+      });
+    }
   }
 
   const seenPresenceKeys = new Set(
@@ -195,6 +202,7 @@ export function calculate(input: CalculationInput): CalculationOutput {
     if (availableQuantity > 0) continue;
 
     results.push({
+      key: representative.id,
       ingredientId: representative.id,
       ingredientName: canonicalIngredientName(representative.name),
       category: representative.category,
@@ -227,6 +235,21 @@ export function scaleQuantity(
 ): number {
   if (baseServings <= 0) return baseQuantity;
   return (baseQuantity * targetServings) / baseServings;
+}
+
+/** Units in the same bucket convert into each other; count units never convert. */
+export function unitBucket(unit: Unit): string {
+  const family = unitTypeMap[unit];
+  return family === 'count' ? unit : family;
+}
+
+function groupBy<T>(items: T[], keyOf: (item: T) => string): Map<string, T[]> {
+  const groups = new Map<string, T[]>();
+  for (const item of items) {
+    const key = keyOf(item);
+    groups.set(key, [...(groups.get(key) ?? []), item]);
+  }
+  return groups;
 }
 
 function chooseCanonicalUnit(units: Unit[], defaultUnit: Unit): Unit {
@@ -264,13 +287,7 @@ function sumConvertible(
       total += item.quantity;
     } else {
       const converted = convertQuantity(item.quantity, item.unit, targetUnit);
-      if (converted !== null) {
-        total += converted;
-      } else {
-        // Cannot convert: keep the original quantity separate is not supported here.
-        // We skip non-convertible quantities to avoid invalid arithmetic.
-        total += 0;
-      }
+      if (converted !== null) total += converted;
     }
   }
   return total;
@@ -310,22 +327,3 @@ function buildShoppingList(
   });
 }
 
-/**
- * Convert a calculated quantity to a practical display unit when possible.
- * For example, 2000 g becomes 2 kg. Returns the original unit if no cleaner unit exists.
- */
-export function toDisplayUnit(quantity: number, unit: Unit): { quantity: number; unit: Unit } {
-  if (unit === 'g' && quantity >= 1000) {
-    const kg = convertQuantity(quantity, 'g', 'kg');
-    if (kg !== null && Number.isInteger(kg)) {
-      return { quantity: kg, unit: 'kg' };
-    }
-  }
-  if (unit === 'ml' && quantity >= 1000) {
-    const l = convertQuantity(quantity, 'ml', 'l');
-    if (l !== null && Number.isInteger(l)) {
-      return { quantity: l, unit: 'l' };
-    }
-  }
-  return { quantity, unit };
-}

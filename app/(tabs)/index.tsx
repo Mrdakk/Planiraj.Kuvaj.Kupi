@@ -1,9 +1,10 @@
-import { useState, useMemo, useEffect } from 'react';
-import { FlatList, Pressable, StyleSheet, Text, View } from 'react-native';
+import { useState, useMemo, useEffect, useRef } from 'react';
+import { AppState, FlatList, Pressable, StyleSheet, Text, View } from 'react-native';
 import { useRouter } from 'expo-router';
 import Ionicons from '@expo/vector-icons/Ionicons';
 import { SafeAreaView } from 'react-native-safe-area-context';
-import { borderRadius, colors, shadows, spacing, typography } from '@/constants/theme';
+import { colors, hit, iconSize, layout, radii, shadows, spacing, typography } from '@/constants/theme';
+import { ScreenHeader } from '@/components/ui/ScreenHeader';
 import { useMealPlan, useMeals } from '@/hooks/useMealPlans';
 import { useRecipes } from '@/hooks/useRecipes';
 import { ChipRow } from '@/components/ui/ChipRow';
@@ -13,7 +14,7 @@ import { Button } from '@/components/ui/Button';
 import { EmojiBadge } from '@/components/ui/EmojiBadge';
 import { NewBadge } from '@/components/ui/NewBadge';
 import { getRecipeEmoji } from '@/constants/emojis';
-import { isCreatedToday, todayISO, dateKey } from '@/lib/dates';
+import { isCreatedToday, todayISO, dateKey, parseISODate } from '@/lib/dates';
 import { formatServings } from '@/lib/formatServings';
 import {
   getWeekDates,
@@ -22,9 +23,11 @@ import {
   compareMealsByPlanOrder,
   formatWeekNavRange,
   formatWeekRange,
+  getWeekStart,
   isPastDay,
 } from '@/features/planner/service';
 import { usePlanWeek } from '@/hooks/usePlanWeek';
+import { useAppStore } from '@/store/appStore';
 import { SuggestMealSheet } from '@/features/planner/SuggestMealSheet';
 import { mealSurface, mealSurfacePressed } from '@/features/planner/mealStatus';
 import type { Meal, Recipe } from '@/types';
@@ -39,12 +42,32 @@ export default function PlanScreen() {
   const weekDates = useMemo(() => getWeekDates(weekStart), [weekStart]);
   const { data: plan, isLoading: planLoading } = useMealPlan(weekStart);
   const { data: meals, isLoading: mealsLoading } = useMeals(plan?.id);
-  const { data: recipes } = useRecipes();
-  const isLoading = planLoading || (!!plan && mealsLoading);
+  const { data: recipes, isLoading: recipesLoading } = useRecipes();
+  const isLoading = planLoading || (!!plan && mealsLoading) || recipesLoading;
 
   useEffect(() => {
     setSelectedDate(defaultDayForWeek(weekStart));
   }, [weekStart]);
+
+  const lastSeenToday = useRef(todayISO());
+  useEffect(() => {
+    const subscription = AppState.addEventListener('change', (state) => {
+      if (state !== 'active') return;
+      const today = todayISO();
+      if (today === lastSeenToday.current) return;
+      const { planWeekStart, setPlanWeekStart } = useAppStore.getState();
+      const previousWeek = getWeekStart(parseISODate(lastSeenToday.current) ?? new Date());
+      lastSeenToday.current = today;
+      if (planWeekStart === previousWeek) {
+        setPlanWeekStart(getWeekStart(new Date()));
+        setSelectedDate(today);
+      }
+    });
+    return () => subscription.remove();
+  }, []);
+
+  const addDate = isPastDay(selectedDate) ? todayISO() : selectedDate;
+  const openCreate = () => router.push({ pathname: '/meals/create', params: { date: addDate } });
 
   const recipeMap = useMemo(
     () => new Map(recipes?.map((r) => [r.id, r]) ?? []),
@@ -112,12 +135,16 @@ export default function PlanScreen() {
       ) : (
         <EmptyState
           title="Nema obroka za ovaj dan"
-          message="Dodaj obrok za izabrani dan."
+          message={
+            isPastDay(selectedDate)
+              ? 'Ovaj dan je prošao. Obroke možeš dodati od danas nadalje.'
+              : 'Izaberi recept i on ide u plan za ovaj dan.'
+          }
           icon="restaurant-outline"
         />
       )}
 
-      <FabButton title="+ Dodaj obrok" onPress={() => router.push('/meals/create')}>
+      <FabButton title="+ Dodaj obrok" onPress={openCreate}>
         <Button
           title="Predloži obrok"
           variant="ghost"
@@ -128,7 +155,7 @@ export default function PlanScreen() {
       <SuggestMealSheet
         visible={suggestOpen}
         onClose={() => setSuggestOpen(false)}
-        defaultDate={isPastDay(selectedDate) ? todayISO() : selectedDate}
+        defaultDate={addDate}
         weekMeals={meals ?? []}
         onPick={({ recipeId, date, mealType }) => {
           setSuggestOpen(false);
@@ -158,7 +185,7 @@ function MealTypeGroup({
       <Text style={styles.groupLabel}>{type}</Text>
       {meals.map((meal) => {
         const recipe = recipeMap.get(meal.recipeId);
-        const name = recipe?.name ?? 'Recept';
+        const name = recipe?.name ?? 'Obrisan recept';
         return (
           <Pressable
             key={meal.id}
@@ -175,7 +202,10 @@ function MealTypeGroup({
                 </Text>
                 {isCreatedToday(recipe?.createdAt) ? <NewBadge /> : null}
               </View>
-              <Text style={styles.mealMeta}>{formatServings(meal.servings)}</Text>
+              <Text style={styles.mealMeta}>
+                {formatServings(meal.servings)}
+                {meal.isCooked ? ' · Skuvano' : ''}
+              </Text>
             </View>
             <EmojiBadge
               emoji={getRecipeEmoji(name, recipe?.emoji)}
@@ -204,41 +234,41 @@ function WeekHeader({
   onToday: () => void;
 }) {
   return (
-    <View style={styles.header}>
-      <Text style={styles.title}>Nedelja</Text>
+    <ScreenHeader title="Plan">
       <View style={styles.weekNav}>
         <View style={styles.weekRange}>
           <Pressable
             onPress={onPrev}
-            hitSlop={8}
+            accessibilityRole="button"
             accessibilityLabel="Prethodna nedelja"
             style={({ pressed }) => [styles.weekNavArrow, pressed && styles.weekNavArrowPressed]}
           >
-            <Ionicons name="chevron-back" size={20} color={colors.text} />
+            <Ionicons name="chevron-back" size={iconSize.md} color={colors.text} />
           </Pressable>
           <Text style={styles.weekNavTitle}>{formatWeekNavRange(weekStart)}</Text>
           <Pressable
             onPress={onNext}
-            hitSlop={8}
+            accessibilityRole="button"
             accessibilityLabel="Sledeća nedelja"
             style={({ pressed }) => [styles.weekNavArrow, pressed && styles.weekNavArrowPressed]}
           >
-            <Ionicons name="chevron-forward" size={20} color={colors.text} />
+            <Ionicons name="chevron-forward" size={iconSize.md} color={colors.text} />
           </Pressable>
         </View>
         <Pressable
           onPress={onToday}
           disabled={isThisWeek}
+          accessibilityRole="button"
           accessibilityLabel={isThisWeek ? 'Ova nedelja' : 'Nazad na ovu nedelju'}
           accessibilityHint={formatWeekRange(weekStart)}
           style={[styles.thisWeekPill, !isThisWeek && styles.thisWeekPillAction]}
         >
           <Text style={[styles.thisWeekPillText, !isThisWeek && styles.thisWeekPillTextAction]}>
-            Ova nedelja
+            {isThisWeek ? 'Ova nedelja' : 'Danas'}
           </Text>
         </Pressable>
       </View>
-    </View>
+    </ScreenHeader>
   );
 }
 
@@ -246,16 +276,6 @@ const styles = StyleSheet.create({
   container: {
     flex: 1,
     backgroundColor: colors.background,
-  },
-  header: {
-    paddingHorizontal: spacing.lg,
-    paddingTop: spacing.md,
-    paddingBottom: spacing.sm,
-  },
-  title: {
-    ...typography.h1,
-    color: colors.text,
-    marginBottom: spacing.md,
   },
   weekNav: {
     flexDirection: 'row',
@@ -266,12 +286,12 @@ const styles = StyleSheet.create({
   weekRange: {
     flexDirection: 'row',
     alignItems: 'center',
-    gap: 2,
     flexShrink: 1,
+    marginLeft: -spacing.md,
   },
   weekNavArrow: {
-    width: 28,
-    height: 36,
+    width: hit.min,
+    height: hit.min,
     alignItems: 'center',
     justifyContent: 'center',
   },
@@ -285,8 +305,9 @@ const styles = StyleSheet.create({
   },
   thisWeekPill: {
     paddingHorizontal: spacing.md,
-    paddingVertical: spacing.sm,
-    borderRadius: borderRadius.full,
+    minHeight: hit.min - spacing.sm,
+    justifyContent: 'center',
+    borderRadius: radii.pill,
     backgroundColor: colors.primary,
   },
   thisWeekPillAction: {
@@ -312,29 +333,25 @@ const styles = StyleSheet.create({
   },
   list: {
     paddingHorizontal: spacing.lg,
-    paddingBottom: 168,
+    paddingBottom: layout.fabStackClearance,
   },
   group: {
     marginBottom: spacing.lg,
     gap: spacing.sm,
   },
   groupLabel: {
-    ...typography.caption,
+    ...typography.overline,
     color: colors.success,
-    fontWeight: '700',
-    letterSpacing: 0.8,
-    textTransform: 'uppercase',
     marginBottom: spacing.xs,
     marginLeft: spacing.xs,
   },
   mealCard: {
     flexDirection: 'row',
     alignItems: 'center',
-    paddingVertical: spacing.xl,
+    paddingVertical: spacing.lg,
     paddingHorizontal: spacing.lg,
-    minHeight: 112,
     gap: spacing.md,
-    borderRadius: borderRadius.xl,
+    borderRadius: radii.card,
     borderWidth: 1,
     borderColor: colors.border,
     ...shadows.sm,
@@ -350,9 +367,7 @@ const styles = StyleSheet.create({
     gap: spacing.sm,
   },
   mealTitle: {
-    ...typography.displayTitle,
-    fontSize: 24,
-    lineHeight: 30,
+    ...typography.cardTitle,
     color: colors.text,
     flex: 1,
     minWidth: 0,
@@ -363,8 +378,9 @@ const styles = StyleSheet.create({
   },
   suggestButton: {
     alignSelf: 'center',
-    minHeight: 40,
+    minHeight: hit.min,
     paddingHorizontal: spacing.xl,
-    borderRadius: borderRadius.full,
+    borderRadius: radii.pill,
+    backgroundColor: colors.surface,
   },
 });

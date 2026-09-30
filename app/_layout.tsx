@@ -1,14 +1,13 @@
 import { useEffect, useState } from 'react';
 import { Stack } from 'expo-router';
 import { StatusBar } from 'expo-status-bar';
-import { SafeAreaProvider } from 'react-native-safe-area-context';
+import { StyleSheet } from 'react-native';
+import { SafeAreaProvider, SafeAreaView } from 'react-native-safe-area-context';
+import { EmptyState } from '@/components/ui/EmptyState';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { useFonts } from 'expo-font';
 import * as SplashScreen from 'expo-splash-screen';
-import {
-  Fraunces_600SemiBold,
-  Fraunces_700Bold,
-} from '@expo-google-fonts/fraunces';
+import { Fraunces_700Bold } from '@expo-google-fonts/fraunces';
 import {
   SourceSans3_400Regular,
   SourceSans3_500Medium,
@@ -20,7 +19,7 @@ import { useAutoSync } from '@/hooks/useAutoSync';
 import { getDatabase } from '@/database';
 import { getHouseholdState } from '@/features/household/state';
 import { OnboardingScreen } from '@/features/household/OnboardingScreen';
-import { colors, fonts } from '@/constants/theme';
+import { colors, fonts, typography } from '@/constants/theme';
 
 SplashScreen.preventAutoHideAsync();
 
@@ -34,10 +33,10 @@ const queryClient = new QueryClient({
 });
 
 export default function RootLayout() {
-  const [gate, setGate] = useState<'loading' | 'onboarding' | 'app'>('loading');
+  const [gate, setGate] = useState<'loading' | 'dbError' | 'onboarding' | 'app'>('loading');
+  const [attempt, setAttempt] = useState(0);
   const [fontsLoaded, fontError] = useFonts({
     Fraunces_700Bold,
-    Fraunces_600SemiBold,
     SourceSans3_400Regular,
     SourceSans3_500Medium,
     SourceSans3_600SemiBold,
@@ -53,9 +52,9 @@ export default function RootLayout() {
       .then((household) => setGate(household ? 'app' : 'onboarding'))
       .catch((error) => {
         console.error('Baza nije spremna', error);
-        setGate('onboarding');
+        setGate('dbError');
       });
-  }, []);
+  }, [attempt]);
 
   useEffect(() => {
     if (fontsReady && gate !== 'loading') {
@@ -66,6 +65,26 @@ export default function RootLayout() {
   if (!fontsReady || gate === 'loading') {
     return (
       <SafeAreaProvider>
+        <StatusBar style="dark" />
+      </SafeAreaProvider>
+    );
+  }
+
+  if (gate === 'dbError') {
+    return (
+      <SafeAreaProvider>
+        <SafeAreaView style={styles.blocking}>
+          <EmptyState
+            icon="alert-circle-outline"
+            title="Podaci nisu učitani"
+            message="Lokalna baza nije mogla da se otvori. Pokušaj ponovo, a ako se ponavlja, restartuj aplikaciju."
+            actionTitle="Pokušaj ponovo"
+            onAction={() => {
+              setGate('loading');
+              setAttempt((value) => value + 1);
+            }}
+          />
+        </SafeAreaView>
         <StatusBar style="dark" />
       </SafeAreaProvider>
     );
@@ -92,6 +111,13 @@ export default function RootLayout() {
   );
 }
 
+const styles = StyleSheet.create({
+  blocking: {
+    flex: 1,
+    backgroundColor: colors.background,
+  },
+});
+
 function AppShell() {
   useAutoSync();
 
@@ -99,10 +125,12 @@ function AppShell() {
     <Stack
       screenOptions={{
         headerStyle: { backgroundColor: colors.background },
-        headerTintColor: colors.text,
+        headerTintColor: colors.primary,
         headerShadowVisible: false,
+        headerBackButtonDisplayMode: 'minimal',
         headerTitleStyle: {
           fontFamily: fonts.bodySemi,
+          fontSize: typography.h3.fontSize,
           color: colors.text,
         },
         contentStyle: { backgroundColor: colors.background },

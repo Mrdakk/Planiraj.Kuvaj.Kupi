@@ -1,7 +1,8 @@
 import { useQuery, useQueryClient, useMutation } from '@tanstack/react-query';
 import { queryKeys } from './queryKeys';
+import { invalidateAfterPantryChange } from './invalidate';
 import { ingredientRepository } from '@/services/repositories';
-import { normalizeRecipeEmoji } from '@/constants/emojis';
+import { needsIngredientEmojiSuggestion } from '@/constants/emojis';
 import { canonicalIngredientName } from '@/lib/ingredientNames';
 
 export function useIngredients() {
@@ -10,7 +11,7 @@ export function useIngredients() {
     queryKey: queryKeys.ingredients,
     queryFn: async () => {
       const ingredients = await ingredientRepository.findAll('name ASC');
-      const missing = ingredients.filter((ingredient) => !normalizeRecipeEmoji(ingredient.emoji));
+      const missing = ingredients.filter((ingredient) => needsIngredientEmojiSuggestion(ingredient));
       if (missing.length > 0) {
         try {
           const { assignMissingIngredientEmojis } = await import('@/features/recipes/suggestEmojis');
@@ -31,23 +32,11 @@ export function useIngredients() {
   });
 }
 
-export function useIngredient(id: string) {
-  return useQuery({
-    queryKey: queryKeys.ingredient(id),
-    queryFn: () => ingredientRepository.findById(id),
-    enabled: !!id,
-  });
-}
-
 export function useUpdateIngredient() {
   const queryClient = useQueryClient();
   return useMutation({
     mutationFn: (item: Parameters<typeof ingredientRepository.update>[0]) =>
       ingredientRepository.update(item),
-    onSuccess: (_, item) => {
-      queryClient.invalidateQueries({ queryKey: queryKeys.ingredients });
-      queryClient.invalidateQueries({ queryKey: queryKeys.ingredient(item.id) });
-      queryClient.invalidateQueries({ queryKey: queryKeys.missing });
-    },
+    onSuccess: () => invalidateAfterPantryChange(queryClient),
   });
 }

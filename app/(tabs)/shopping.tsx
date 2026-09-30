@@ -3,7 +3,10 @@ import { FlatList, StyleSheet, Text, View } from 'react-native';
 import { useRouter } from 'expo-router';
 import { useQueryClient } from '@tanstack/react-query';
 import { SafeAreaView } from 'react-native-safe-area-context';
-import { colors, typography, spacing, borderRadius } from '@/constants/theme';
+import { colors, typography, spacing, borderRadius, layout } from '@/constants/theme';
+import { ConfirmSheet } from '@/components/ui/ConfirmSheet';
+import { emptyCta } from '@/components/ui/emptyCta';
+import { invalidateAfterShoppingChange } from '@/hooks/invalidate';
 import {
   useShoppingList,
   useShoppingItems,
@@ -20,14 +23,15 @@ import { EmojiBadge } from '@/components/ui/EmojiBadge';
 import { formatAmount } from '@/lib/formatQuantity';
 import { displayIngredientName } from '@/lib/ingredientNames';
 import { getIngredientEmoji } from '@/constants/emojis';
+import { useIngredientEmojiEditor } from '@/features/ingredients/IngredientEmojiSheet';
 import { weekScreenSubtitle } from '@/features/planner/service';
 import { usePlanWeek } from '@/hooks/usePlanWeek';
 import { purchaseCheckedItems } from '@/features/shopping/purchase';
 import { checkedShoppingItems } from '@/features/shopping/service';
-import { queryKeys } from '@/hooks/queryKeys';
 import type { ShoppingItem } from '@/types';
 
 export default function ShoppingScreen() {
+  const { editIngredientEmoji, ingredientEmojiSheet } = useIngredientEmojiEditor();
   const router = useRouter();
   const { weekStart } = usePlanWeek();
   const { data: list, isLoading: listLoading } = useShoppingList(weekStart);
@@ -37,6 +41,7 @@ export default function ShoppingScreen() {
   const queryClient = useQueryClient();
   const [purchasing, setPurchasing] = useState(false);
   const [confirmPurchase, setConfirmPurchase] = useState(false);
+  const [purchaseError, setPurchaseError] = useState<string | null>(null);
 
   const ingredientMap = useMemo(
     () => new Map(ingredients?.map((i) => [i.id, i]) ?? []),
@@ -74,15 +79,12 @@ export default function ShoppingScreen() {
     setPurchasing(true);
     try {
       await purchaseCheckedItems(checkedItems);
-      await Promise.all([
-        queryClient.invalidateQueries({ queryKey: queryKeys.shoppingLists }),
-        queryClient.invalidateQueries({ queryKey: queryKeys.shoppingItems(list?.id ?? '') }),
-        queryClient.invalidateQueries({ queryKey: queryKeys.pantryItems }),
-        queryClient.invalidateQueries({ queryKey: queryKeys.missing }),
-        queryClient.invalidateQueries({ queryKey: queryKeys.ingredients }),
-      ]);
       setConfirmPurchase(false);
+    } catch (err) {
+      setConfirmPurchase(false);
+      setPurchaseError(err instanceof Error ? err.message : 'Pokušaj ponovo.');
     } finally {
+      await invalidateAfterShoppingChange(queryClient);
       setPurchasing(false);
     }
   };
@@ -105,8 +107,10 @@ export default function ShoppingScreen() {
       {groupedItems.length === 0 ? (
         <EmptyState
           title="Lista je prazna"
-          message="Sa taba Fali označi šta da kupiš, ili dodaj ručno."
+          message="Na tabu Fali označi šta da kupiš, ili dodaj stavku ručno."
           icon="cart-outline"
+          actionTitle={emptyCta.shopping.title}
+          onAction={() => router.push(emptyCta.shopping.href)}
         />
       ) : (
         <FlatList
@@ -122,8 +126,9 @@ export default function ShoppingScreen() {
                 return (
                   <ListRow
                     key={item.id}
-                    emoji={getIngredientEmoji(name, ingredient?.category ?? item.category, ingredient?.emoji)}
+                    emoji={getIngredientEmoji(name, ingredient?.category ?? item.category, ingredient?.emoji, ingredient?.emojiSource)}
                     title={name}
+                    onEmojiPress={ingredient ? () => editIngredientEmoji(ingredient) : undefined}
                     trailing={formatAmount(item.quantity, item.unit)}
                     showCheck
                     checked={item.isChecked}
@@ -137,16 +142,27 @@ export default function ShoppingScreen() {
         />
       )}
 
-      {checkedCount > 0 ? (
-        <View style={styles.barWrap}>
+      <FabButton title="+ Dodaj stavku" onPress={() => router.push('/shopping/create')}>
+        {checkedCount > 0 ? (
           <Button
             title={`Kupljeno (${checkedCount})`}
+            variant="secondary"
             onPress={() => setConfirmPurchase(true)}
           />
-        </View>
-      ) : null}
+        ) : null}
+      </FabButton>
+      {ingredientEmojiSheet}
 
-      <FabButton title="+ Dodaj stavku" onPress={() => router.push('/shopping/create')} />
+      <ConfirmSheet
+        visible={purchaseError !== null}
+        title="Kupovina nije sačuvana"
+        message={purchaseError ?? ''}
+        confirmLabel="U redu"
+        variant="warning"
+        hideCancel
+        onConfirm={() => setPurchaseError(null)}
+        onCancel={() => setPurchaseError(null)}
+      />
 
       <AppSheet
         visible={confirmPurchase}
@@ -170,7 +186,7 @@ export default function ShoppingScreen() {
           return (
             <View key={item.id} style={styles.previewRow}>
               <EmojiBadge
-                emoji={getIngredientEmoji(name, ingredient?.category ?? item.category, ingredient?.emoji)}
+                emoji={getIngredientEmoji(name, ingredient?.category ?? item.category, ingredient?.emoji, ingredient?.emojiSource)}
                 name={name}
                 size={40}
               />
@@ -195,16 +211,10 @@ const styles = StyleSheet.create({
     paddingHorizontal: spacing.lg,
   },
   list: {
-    paddingBottom: 96,
+    paddingBottom: layout.fabClearance,
   },
   listWithBar: {
-    paddingBottom: 160,
-  },
-  barWrap: {
-    position: 'absolute',
-    left: spacing.lg,
-    right: spacing.lg,
-    bottom: 76,
+    paddingBottom: layout.fabStackClearance,
   },
   sectionTitle: {
     ...typography.caption,

@@ -16,7 +16,7 @@ jest.mock('expo-sqlite', () => ({
   openDatabaseAsync: jest.fn(async () => mockDb),
 }));
 
-import { closeDatabase, getDatabase } from '../index';
+import { closeDatabase, execMigration, getDatabase } from '../index';
 
 async function withTimeout<T>(promise: Promise<T>, ms: number): Promise<T> {
   let timer: ReturnType<typeof setTimeout> | undefined;
@@ -49,5 +49,32 @@ describe('getDatabase', () => {
     );
     expect(first).toBe(mockDb);
     expect(second).toBe(mockDb);
+  });
+});
+
+describe('execMigration', () => {
+  it('skips columns that already exist and keeps running the rest', async () => {
+    const executed: string[] = [];
+    const db = {
+      execAsync: jest.fn(async (sql: string) => {
+        executed.push(sql);
+        if (sql.startsWith('ALTER')) throw new Error('duplicate column name: meal_types');
+      }),
+    };
+
+    await execMigration(
+      db as never,
+      `ALTER TABLE recipes ADD COLUMN meal_types TEXT;\nUPDATE recipes SET meal_types = '[]';\n`
+    );
+
+    expect(executed).toEqual([
+      'ALTER TABLE recipes ADD COLUMN meal_types TEXT;',
+      "UPDATE recipes SET meal_types = '[]';",
+    ]);
+  });
+
+  it('still fails on other errors', async () => {
+    const db = { execAsync: jest.fn(async () => { throw new Error('no such table: x'); }) };
+    await expect(execMigration(db as never, 'UPDATE x SET y = 1;')).rejects.toThrow('no such table');
   });
 });

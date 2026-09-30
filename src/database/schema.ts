@@ -236,4 +236,5 @@ CREATE TABLE IF NOT EXISTS household_state (
   updated_at TEXT NOT NULL
 );
 `,
+  8: `ALTER TABLE ingredients ADD COLUMN emoji_source TEXT;`,
 };

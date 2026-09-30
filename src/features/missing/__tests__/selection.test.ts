@@ -25,6 +25,7 @@ const dayGroup: MissingDayGroup = {
       mealIds: ['meal-1'],
       items: [
         {
+          key: 'ing-tomato',
           ingredientId: 'ing-tomato',
           ingredientName: 'Paradajz',
           category: 'Povrće',
@@ -32,6 +33,7 @@ const dayGroup: MissingDayGroup = {
           unit: 'kom',
         },
         {
+          key: 'ing-pepper',
           ingredientId: 'ing-pepper',
           ingredientName: 'Paprika',
           category: 'Povrće',
@@ -47,6 +49,7 @@ const dayGroup: MissingDayGroup = {
       mealIds: ['meal-2'],
       items: [
         {
+          key: 'ing-tomato',
           ingredientId: 'ing-tomato',
           ingredientName: 'Paradajz',
           category: 'Povrće',
@@ -66,6 +69,7 @@ function missingItem(
   mealIds: string[]
 ): CalculationResult {
   return {
+    key: ingredientId,
     ingredientId,
     ingredientName: name,
     category: 'Povrće' as IngredientCategory,

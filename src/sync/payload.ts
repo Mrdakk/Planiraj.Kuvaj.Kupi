@@ -41,6 +41,8 @@ const DROP_KEYS = new Set([
   'sync_status',
   'syncStatus',
   'emoji',
+  'emojiSource',
+  'emoji_source',
   'user_id',
   'userId',
   'previousQuantity',

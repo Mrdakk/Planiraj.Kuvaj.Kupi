@@ -35,6 +35,8 @@ export function ChipRow({
         {allLabel ? (
           <Pressable
             onPress={() => onSelect(null)}
+            accessibilityRole="button"
+            accessibilityState={{ selected: selected === null }}
             style={[styles.chip, compact && styles.chipCompact, selected === null && styles.chipActive]}
           >
             <Text style={[styles.chipText, compact && styles.chipTextCompact, selected === null && styles.chipTextActive]}>
@@ -49,6 +51,9 @@ export function ChipRow({
             <Pressable
               key={item}
               onPress={() => onSelect(active && canDeselect ? null : item)}
+              accessibilityRole="button"
+              accessibilityState={{ selected: active }}
+              hitSlop={{ top: spacing.xs, bottom: spacing.xs }}
               style={[
                 styles.chip,
                 compact && styles.chipCompact,
@@ -99,14 +104,13 @@ const styles = StyleSheet.create({
     alignSelf: 'center',
   },
   chipCompact: {
-    paddingVertical: 6,
+    paddingVertical: spacing.sm,
     paddingHorizontal: spacing.md,
     borderWidth: 0,
     backgroundColor: colors.surfaceRaised,
   },
   chipTextCompact: {
-    fontSize: 13,
-    lineHeight: 18,
+    ...typography.label,
   },
   chipActive: {
     backgroundColor: colors.primary,
@@ -155,6 +159,8 @@ export function ChipToggleRow({
           <Pressable
             key={item}
             onPress={() => onToggle(item)}
+            accessibilityRole="checkbox"
+            accessibilityState={{ checked: active }}
             style={[styles.chip, active && styles.chipActive]}
           >
             <Text style={[styles.chipText, active && styles.chipTextActive]}>{item}</Text>

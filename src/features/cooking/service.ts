@@ -112,6 +112,9 @@ export interface ConsumeMealInput {
 
 export async function consumeMeal(input: ConsumeMealInput): Promise<ConsumptionLog[]> {
   const { meal, recipeBaseServings, overrides, presenceStillHave } = input;
+  if (meal.isCooked) {
+    throw new Error('Obrok je već označen kao kuvano.');
+  }
   const recipeIngredients = await recipeIngredientRepository.findManyWhere(
     'recipe_id = ?',
     [meal.recipeId]
@@ -126,6 +129,21 @@ export async function consumeMeal(input: ConsumeMealInput): Promise<ConsumptionL
 
   const updatedPantryItems: PantryItem[] = [];
   const updatedIds = new Set<string>();
+
+  const writeLog = async (ingredientId: string, quantity: number, unit: ConsumptionLog['unit']) => {
+    const log: ConsumptionLog = {
+      id: generateUUID(),
+      mealId: meal.id,
+      ingredientId,
+      quantity,
+      unit,
+      consumedAt: now,
+      createdAt: now,
+      updatedAt: now,
+    };
+    await consumptionLogRepository.insert(log);
+    logs.push(log);
+  };
 
   for (const ri of recipeIngredients) {
     if (presenceIds.has(ri.ingredientId)) {
@@ -144,16 +162,21 @@ export async function consumeMeal(input: ConsumeMealInput): Promise<ConsumptionL
           updatedAt: now,
         };
         await pantryItemRepository.insert(created);
+        if (created.quantity > 0) {
+          // Negative log: undo takes back the stock this cook added.
+          await writeLog(ri.ingredientId, -created.quantity, created.unit);
+        }
         continue;
       }
       for (const pantryItem of matchingPantry) {
         if (updatedIds.has(pantryItem.id)) continue;
-        updatedPantryItems.push({
-          ...pantryItem,
-          quantity: stillHave ? Math.max(pantryItem.quantity, 1) : 0,
-          updatedAt: now,
-        });
+        const nextQuantity = stillHave ? Math.max(pantryItem.quantity, 1) : 0;
+        updatedPantryItems.push({ ...pantryItem, quantity: nextQuantity, updatedAt: now });
         updatedIds.add(pantryItem.id);
+        const removed = pantryItem.quantity - nextQuantity;
+        if (removed !== 0) {
+          await writeLog(ri.ingredientId, removed, pantryItem.unit);
+        }
       }
       continue;
     }
@@ -203,18 +226,7 @@ export async function consumeMeal(input: ConsumeMealInput): Promise<ConsumptionL
     }
 
     if (actuallyConsumed > 0) {
-      const log: ConsumptionLog = {
-        id: generateUUID(),
-        mealId: meal.id,
-        ingredientId: ri.ingredientId,
-        quantity: actuallyConsumed,
-        unit: ri.unit,
-        consumedAt: now,
-        createdAt: now,
-        updatedAt: now,
-      };
-      await consumptionLogRepository.insert(log);
-      logs.push(log);
+      await writeLog(ri.ingredientId, actuallyConsumed, ri.unit);
     }
   }
 
@@ -251,7 +263,7 @@ export async function unconsumeMeal(meal: Meal): Promise<void> {
     if (sameUnit) {
       const next = {
         ...sameUnit,
-        quantity: sameUnit.quantity + log.quantity,
+        quantity: Math.max(0, sameUnit.quantity + log.quantity),
         updatedAt: now,
       };
       existing[existing.findIndex((item) => item.id === sameUnit.id)] = next;
@@ -266,7 +278,7 @@ export async function unconsumeMeal(meal: Meal): Promise<void> {
       if (converted === null) continue;
       const next = {
         ...item,
-        quantity: item.quantity + converted,
+        quantity: Math.max(0, item.quantity + converted),
         updatedAt: now,
       };
       existing[existing.findIndex((row) => row.id === item.id)] = next;
@@ -275,7 +287,7 @@ export async function unconsumeMeal(meal: Meal): Promise<void> {
       restored = true;
       break;
     }
-    if (restored) continue;
+    if (restored || log.quantity <= 0) continue;
 
     const created: PantryItem = {
       id: generateUUID(),
@@ -303,48 +315,4 @@ export async function unconsumeMeal(meal: Meal): Promise<void> {
   }
 
   await mealRepository.update({ ...meal, isCooked: false, updatedAt: now });
-}
-
-export async function consumePartial(
-  meal: Meal,
-  ingredientId: string,
-  unit: string,
-  quantity: number
-): Promise<ConsumptionLog | null> {
-  const pantryItems = await pantryItemRepository.findManyWhere(
-    'ingredient_id = ?',
-    [ingredientId]
-  );
-  const now = nowISO();
-
-  if (pantryItems.length === 0) return null;
-
-  const pantryItem = pantryItems[0];
-  let consumeInPantryUnit = quantity;
-
-  if (pantryItem.unit !== unit) {
-    const converted = convertQuantity(quantity, unit as never, pantryItem.unit);
-    if (converted === null) return null;
-    consumeInPantryUnit = converted;
-  }
-
-  const updated: PantryItem = {
-    ...pantryItem,
-    quantity: Math.max(0, pantryItem.quantity - consumeInPantryUnit),
-    updatedAt: now,
-  };
-  await pantryItemRepository.update(updated);
-
-  const log: ConsumptionLog = {
-    id: generateUUID(),
-    mealId: meal.id,
-    ingredientId,
-    quantity,
-    unit: unit as never,
-    consumedAt: now,
-    createdAt: now,
-    updatedAt: now,
-  };
-  await consumptionLogRepository.insert(log);
-  return log;
 }

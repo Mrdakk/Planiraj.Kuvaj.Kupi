@@ -2,7 +2,7 @@ import { StyleSheet, Pressable, Text } from 'react-native';
 import { Stack, useRouter } from 'expo-router';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import Ionicons from '@expo/vector-icons/Ionicons';
-import { colors, typography, spacing } from '@/constants/theme';
+import { colors, hit, iconSize, typography, spacing } from '@/constants/theme';
 import { useRecipes } from '@/hooks/useRecipes';
 import { FabButton } from '@/components/ui/FabButton';
 import { RecipeBrowseList } from '@/features/recipes/RecipeBrowseList';
@@ -18,8 +18,15 @@ export default function RecipesScreen() {
         options={{
           title: 'Recepti',
           headerRight: () => (
-            <Pressable onPress={() => router.push('/recipes/import')} hitSlop={12}>
-              <Ionicons name="link-outline" size={22} color={colors.text} />
+            <Pressable
+              onPress={() => router.push('/recipes/import')}
+              hitSlop={hit.slop}
+              accessibilityRole="button"
+              accessibilityLabel="Uvezi recept sa linka ili iz teksta"
+              style={styles.headerAction}
+            >
+              <Ionicons name="link-outline" size={iconSize.md} color={colors.primary} />
+              <Text style={styles.headerActionText}>Uvoz</Text>
             </Pressable>
           ),
         }}
@@ -49,5 +56,15 @@ const styles = StyleSheet.create({
     ...typography.body,
     color: colors.textSecondary,
     paddingHorizontal: spacing.lg,
+  },
+  headerAction: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: spacing.xs,
+    minHeight: hit.min,
+  },
+  headerActionText: {
+    ...typography.button,
+    color: colors.primary,
   },
 });

@@ -1,9 +1,10 @@
-import { FlatList, Pressable, StyleSheet, Text, View } from 'react-native';
+import { FlatList, StyleSheet, Text, View } from 'react-native';
 import { Stack, useRouter } from 'expo-router';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { colors, typography, spacing } from '@/constants/theme';
 import { useCookedMealHistory } from '@/hooks/useHistory';
 import { EmptyState } from '@/components/ui/EmptyState';
+import { NavRow } from '@/components/ui/NavRow';
 import { emptyCta } from '@/components/ui/emptyCta';
 import { formatDisplayDate } from '@/lib/dates';
 
@@ -42,15 +43,11 @@ export default function HistoryScreen() {
           contentContainerStyle={styles.list}
           ItemSeparatorComponent={() => <View style={styles.separator} />}
           renderItem={({ item }) => (
-            <Pressable
+            <NavRow
+              title={item.recipeName}
+              subtitle={`${formatDisplayDate(item.date)} · ${item.mealType}`}
               onPress={() => router.push(`/meals/${item.id}`)}
-              style={({ pressed }) => [styles.row, pressed && styles.pressed]}
-            >
-              <Text style={styles.date}>{formatDisplayDate(item.date)}</Text>
-              <Text style={styles.meal} numberOfLines={1}>
-                {item.recipeName}
-              </Text>
-            </Pressable>
+            />
           )}
         />
       )}
@@ -72,30 +69,8 @@ const styles = StyleSheet.create({
     paddingBottom: spacing.xxxl,
   },
   separator: {
-    height: 1,
+    height: StyleSheet.hairlineWidth,
     backgroundColor: colors.border,
     marginLeft: spacing.lg,
-  },
-  row: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    backgroundColor: colors.surface,
-    paddingVertical: spacing.md,
-    paddingHorizontal: spacing.lg,
-    gap: spacing.md,
-  },
-  pressed: {
-    opacity: 0.7,
-  },
-  date: {
-    ...typography.body,
-    color: colors.textSecondary,
-  },
-  meal: {
-    ...typography.body,
-    color: colors.text,
-    fontWeight: '600',
-    flex: 1,
-    textAlign: 'right',
   },
 });

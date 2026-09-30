@@ -1,5 +1,9 @@
 import { isSupabaseConfigured, requireSupabase } from '@/lib/supabase';
-import { normalizeRecipeEmoji } from '@/constants/emojis';
+import { canonicalIngredientEmoji, sameIngredientKey } from '@/constants/ingredientEmojis';
+import {
+  needsIngredientEmojiSuggestion,
+  normalizeRecipeEmoji,
+} from '@/constants/emojis';
 import { nowISO } from '@/database/repository';
 import { ingredientRepository, recipeRepository } from '@/services/repositories';
 import type { Ingredient, Recipe } from '@/types';
@@ -14,7 +18,7 @@ function lookupEmoji(map: Record<string, string>, name: string): string | null {
   if (direct) return direct;
   const lower = name.trim().toLowerCase();
   for (const [key, value] of Object.entries(map)) {
-    if (key.trim().toLowerCase() === lower) {
+    if (key.trim().toLowerCase() === lower || sameIngredientKey(key, name)) {
       return normalizeRecipeEmoji(value);
     }
   }
@@ -101,7 +105,7 @@ export async function assignMissingIngredientEmojis(ingredients: Ingredient[]): 
   const missing = ingredients
     .filter(
       (ingredient) =>
-        !normalizeRecipeEmoji(ingredient.emoji) && !attemptedIngredientIds.has(ingredient.id)
+        needsIngredientEmojiSuggestion(ingredient) && !attemptedIngredientIds.has(ingredient.id)
     )
     .slice(0, 40);
   if (missing.length === 0 || assigningIngredients) return false;
@@ -112,9 +116,14 @@ export async function assignMissingIngredientEmojis(ingredients: Ingredient[]): 
     const now = nowISO();
     let changed = false;
     for (const ingredient of missing) {
-      const emoji = lookupEmoji(map, ingredient.name);
+      const emoji = canonicalIngredientEmoji(lookupEmoji(map, ingredient.name));
       if (!emoji) continue;
-      await ingredientRepository.update({ ...ingredient, emoji, updatedAt: now });
+      await ingredientRepository.update({
+        ...ingredient,
+        emoji,
+        emojiSource: 'ai',
+        updatedAt: now,
+      });
       changed = true;
     }
     return changed;

@@ -4,7 +4,7 @@ import { useRouter } from 'expo-router';
 import { ChipRow } from '@/components/ui/ChipRow';
 import { EmptyState } from '@/components/ui/EmptyState';
 import { ListRow } from '@/components/ui/ListRow';
-import { borderRadius, colors, spacing, typography } from '@/constants/theme';
+import { borderRadius, colors, layout, spacing, typography } from '@/constants/theme';
 import { getRecipeEmoji } from '@/constants/emojis';
 import { mealTypes, type MealType } from '@/constants/categories';
 import { recipeListSubtitle } from '@/features/recipes/classification';
@@ -119,7 +119,7 @@ const styles = StyleSheet.create({
     padding: spacing.lg,
   },
   list: {
-    paddingBottom: 96,
+    paddingBottom: layout.fabClearance,
   },
   sectionTitle: {
     ...typography.caption,
@@ -133,8 +133,8 @@ const styles = StyleSheet.create({
     paddingBottom: spacing.sm,
   },
   separator: {
-    height: 1,
+    height: StyleSheet.hairlineWidth,
     backgroundColor: colors.border,
-    marginLeft: 72,
+    marginLeft: layout.listInset,
   },
 });

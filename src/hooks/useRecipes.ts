@@ -7,6 +7,8 @@ import {
 } from '@/services/repositories';
 import { normalizeRecipeEmoji } from '@/constants/emojis';
 import { displayIngredientName } from '@/lib/ingredientNames';
+import { deleteRecipe } from '@/features/recipes/deleteRecipe';
+import { invalidateAfterRecipeChange } from './invalidate';
 import type { Recipe, RecipeIngredient, RecipeWithIngredients } from '@/types';
 
 export function useRecipes() {
@@ -57,70 +59,12 @@ export function useRecipe(id: string) {
   });
 }
 
-export function useCreateRecipe() {
-  const queryClient = useQueryClient();
-
-  return useMutation({
-    mutationFn: async (recipe: RecipeWithIngredients) => {
-      await recipeRepository.insert(recipe);
-      for (const ingredient of recipe.ingredients) {
-        await recipeIngredientRepository.insert(ingredient);
-      }
-      return recipe;
-    },
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: queryKeys.recipes });
-      queryClient.invalidateQueries({ queryKey: queryKeys.recipeIngredientsAll });
-    },
-  });
-}
-
-export function useUpdateRecipe() {
-  const queryClient = useQueryClient();
-
-  return useMutation({
-    mutationFn: async (recipe: RecipeWithIngredients) => {
-      await recipeRepository.update(recipe);
-      // Naive: delete existing ingredients and re-insert.
-      const existing = await recipeIngredientRepository.findManyWhere(
-        'recipe_id = ?',
-        [recipe.id]
-      );
-      for (const item of existing) {
-        await recipeIngredientRepository.delete(item.id);
-      }
-      for (const ingredient of recipe.ingredients) {
-        await recipeIngredientRepository.insert(ingredient);
-      }
-      return recipe;
-    },
-    onSuccess: (_, recipe) => {
-      queryClient.invalidateQueries({ queryKey: queryKeys.recipes });
-      queryClient.invalidateQueries({ queryKey: queryKeys.recipe(recipe.id) });
-      queryClient.invalidateQueries({ queryKey: queryKeys.recipeIngredientsAll });
-    },
-  });
-}
-
 export function useDeleteRecipe() {
   const queryClient = useQueryClient();
 
   return useMutation({
-    mutationFn: async (id: string) => {
-      const ingredients = await recipeIngredientRepository.findManyWhere(
-        'recipe_id = ?',
-        [id]
-      );
-      for (const item of ingredients) {
-        await recipeIngredientRepository.delete(item.id);
-      }
-      await recipeRepository.delete(id);
-      return id;
-    },
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: queryKeys.recipes });
-      queryClient.invalidateQueries({ queryKey: queryKeys.recipeIngredientsAll });
-    },
+    mutationFn: (id: string) => deleteRecipe(id),
+    onSuccess: () => invalidateAfterRecipeChange(queryClient),
   });
 }
 
@@ -144,14 +88,6 @@ export function useAllRecipeIngredients() {
   return useQuery({
     queryKey: queryKeys.recipeIngredientsAll,
     queryFn: () => recipeIngredientRepository.findAll(),
-  });
-}
-
-export function useRecipeIngredients(recipeId: string) {
-  return useQuery({
-    queryKey: queryKeys.recipeIngredients(recipeId),
-    queryFn: () => recipeIngredientRepository.findManyWhere('recipe_id = ?', [recipeId]),
-    enabled: !!recipeId,
   });
 }
 

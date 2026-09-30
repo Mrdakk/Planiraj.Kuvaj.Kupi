@@ -32,6 +32,7 @@ export interface Ingredient extends Timestamps {
   category: IngredientCategory;
   defaultUnit: Unit;
   emoji: string | null;
+  emojiSource?: 'user' | 'ai' | null;
   trackPresence: boolean;
 }
 
@@ -160,22 +161,3 @@ export interface SyncState {
   pendingCount: number;
 }
 
-export interface CalculationRequirement {
-  ingredientId: UUID;
-  unit: Unit;
-  quantity: number;
-  mealIds: UUID[];
-}
-
-export interface CalculationResult {
-  ingredientId: UUID;
-  requiredQuantity: number;
-  requiredUnit: Unit;
-  availableQuantity: number;
-  availableUnit: Unit;
-  missingQuantity: number;
-  missingUnit: Unit;
-  isMissing: boolean;
-  meals: { mealId: UUID; quantity: number; unit: Unit }[];
-  trackPresence?: boolean;
-}

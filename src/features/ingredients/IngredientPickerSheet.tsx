@@ -85,7 +85,7 @@ export function IngredientPickerSheet({
               return (
                 <View key={other.id} style={styles.row}>
                   <ListRow
-                    emoji={getIngredientEmoji(otherName, other.category, other.emoji)}
+                    emoji={getIngredientEmoji(otherName, other.category, other.emoji, other.emojiSource)}
                     title={otherName}
                     subtitle={other.category}
                     onPress={() => setPending(other)}

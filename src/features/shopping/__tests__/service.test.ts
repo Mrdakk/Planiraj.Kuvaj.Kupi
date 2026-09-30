@@ -160,6 +160,15 @@ describe('previewAddToShopping', () => {
     expect(preview.newLines).toHaveLength(1);
     expect(preview.conflicts).toHaveLength(0);
   });
+
+  it('treats convertible units (g and kg) as the same item', async () => {
+    items.findManyWhere.mockResolvedValue([createItem({ unit: 'g', quantity: 500 })]);
+
+    const preview = await previewAddToShopping(WEEK_START, [createLine({ unit: 'kg', quantity: 0.5 })]);
+
+    expect(preview.conflicts).toHaveLength(1);
+    expect(preview.newLines).toHaveLength(0);
+  });
 });
 
 describe('applyAddToShopping', () => {
@@ -201,6 +210,14 @@ describe('applyAddToShopping', () => {
       quantity: 5,
       sourceMealIds: ['meal-a', 'meal-b'],
     });
+  });
+
+  it('converts into the existing row unit when merging', async () => {
+    items.findManyWhere.mockResolvedValue([createItem({ unit: 'g', quantity: 500 })]);
+
+    await applyAddToShopping('list-1', [createLine({ unit: 'kg', quantity: 0.5 })], 'merge');
+
+    expect(items.update.mock.calls[0]?.[0]).toMatchObject({ id: 'item-1', quantity: 1000, unit: 'g' });
   });
 
   it('inserts a separate row when conflict mode is separate', async () => {

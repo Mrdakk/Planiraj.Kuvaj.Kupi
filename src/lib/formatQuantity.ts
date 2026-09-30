@@ -111,3 +111,23 @@ export function parseQuantity(text: string): number {
   const parsed = Number(trimmed);
   return Number.isFinite(parsed) ? parsed : 0;
 }
+
+/** Positive amount from user input, or null when empty, invalid, zero or negative. */
+export function parsePositiveQuantity(text: string): number | null {
+  const value = parseQuantity(text);
+  return value > 0 ? value : null;
+}
+
+/** Kitchen stock may be 0 (used up); null when empty, invalid or negative. */
+export function parseStockQuantity(text: string): number | null {
+  const trimmed = text.trim();
+  if (!trimmed) return null;
+  if (/^0+([.,]0*)?$/.test(trimmed)) return 0;
+  return parsePositiveQuantity(trimmed);
+}
+
+/** Plain decimal for edit fields; `formatQuantity` snaps to fractions and would alter the value on save. */
+export function formatEditableQuantity(value: number): string {
+  if (!Number.isFinite(value)) return '';
+  return String(Math.round(value * 1000) / 1000).replace('.', ',');
+}

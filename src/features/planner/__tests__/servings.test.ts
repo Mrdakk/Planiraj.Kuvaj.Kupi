@@ -1,5 +1,19 @@
 import { describe, expect, it } from '@jest/globals';
-import { defaultMealServings } from '../servings';
+import { defaultMealServings, parseServings } from '../servings';
+
+describe('parseServings', () => {
+  it('accepts whole numbers and decimal comma', () => {
+    expect(parseServings('3')).toBe(3);
+    expect(parseServings('1,5')).toBe(1.5);
+  });
+
+  it('rejects values below one and garbage', () => {
+    expect(parseServings('')).toBeNull();
+    expect(parseServings('0,5')).toBeNull();
+    expect(parseServings('-3')).toBeNull();
+    expect(parseServings('abc')).toBeNull();
+  });
+});
 
 describe('defaultMealServings', () => {
   it('uses the recipe base servings', () => {

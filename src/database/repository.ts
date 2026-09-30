@@ -200,6 +200,12 @@ export async function getPendingSyncQueue(): Promise<SQLiteSyncQueueRow[]> {
   );
 }
 
+/** Every queued change, including ones that gave up after too many retries. */
+export async function getAllSyncQueue(): Promise<SQLiteSyncQueueRow[]> {
+  const db = await getDatabase();
+  return db.getAllAsync<SQLiteSyncQueueRow>('SELECT * FROM sync_queue ORDER BY created_at ASC');
+}
+
 export async function removeSyncQueueItem(id: string): Promise<void> {
   const db = await getDatabase();
   await db.runAsync('DELETE FROM sync_queue WHERE id = ?', [id]);

@@ -42,4 +42,10 @@ describe('ingredientMatchesSearch', () => {
     expect(ingredientMatchesSearch('sol', 'so')).toBe(true);
     expect(ingredientMatchesSearch('Biber', 'sol')).toBe(false);
   });
+
+  it('ignores Serbian diacritics', () => {
+    expect(ingredientMatchesSearch('Čokolada', 'cokolada')).toBe(true);
+    expect(ingredientMatchesSearch('Đumbir', 'djumbir')).toBe(true);
+    expect(ingredientMatchesSearch('Šargarepa', 'SARG')).toBe(true);
+  });
 });

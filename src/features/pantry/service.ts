@@ -66,19 +66,6 @@ export async function addPantryItem(input: CreatePantryItemInput): Promise<Pantr
   return item;
 }
 
-export async function adjustPantryItemQuantity(
-  item: PantryItem,
-  delta: number
-): Promise<PantryItem> {
-  const updated: PantryItem = {
-    ...item,
-    quantity: Math.max(0, item.quantity + delta),
-    updatedAt: nowISO(),
-  };
-  await pantryItemRepository.update(updated);
-  return updated;
-}
-
 export function daysUntilExpiry(expiresAt: string | null): number | null {
   if (!expiresAt) return null;
   const expiry = parseISODate(expiresAt);

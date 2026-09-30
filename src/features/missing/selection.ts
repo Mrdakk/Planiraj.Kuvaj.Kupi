@@ -9,16 +9,17 @@ import type { DayRecipeGroup, MissingDayGroup } from './groupByDay';
 
 export type SelectionHeaderState = 'all' | 'none' | 'some';
 
-export function byDayItemKey(date: string, recipeId: string, ingredientId: string): string {
-  return `${date}|${recipeId}|${ingredientId}`;
+/** `rowKey` is the calculation result key (ingredient plus unit family). */
+export function byDayItemKey(date: string, recipeId: string, rowKey: string): string {
+  return `${date}|${recipeId}|${rowKey}`;
 }
 
-export function allTogetherItemKey(ingredientId: string): string {
-  return `all|${ingredientId}`;
+export function allTogetherItemKey(rowKey: string): string {
+  return `all|${rowKey}`;
 }
 
 export function keysForRecipe(date: string, recipe: DayRecipeGroup): string[] {
-  return recipe.items.map((item) => byDayItemKey(date, recipe.recipeId, item.ingredientId));
+  return recipe.items.map((item) => byDayItemKey(date, recipe.recipeId, item.key));
 }
 
 export function keysForDay(group: MissingDayGroup): string[] {
@@ -81,7 +82,7 @@ export function collectByDayLines(
   for (const group of groups) {
     for (const recipe of group.recipes) {
       for (const item of recipe.items) {
-        if (!selected.has(byDayItemKey(group.date, recipe.recipeId, item.ingredientId))) continue;
+        if (!selected.has(byDayItemKey(group.date, recipe.recipeId, item.key))) continue;
         lines.push({
           ingredientId: item.ingredientId,
           name: item.ingredientName,
@@ -102,7 +103,7 @@ export function collectAllTogetherLines(
 ): ShoppingAddLine[] {
   const lines: ShoppingAddLine[] = [];
   for (const item of missing) {
-    if (!selected.has(allTogetherItemKey(item.ingredientId))) continue;
+    if (!selected.has(allTogetherItemKey(item.key))) continue;
     lines.push({
       ingredientId: item.ingredientId,
       name: item.ingredientName,

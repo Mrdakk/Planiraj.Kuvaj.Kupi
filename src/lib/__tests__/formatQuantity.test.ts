@@ -1,5 +1,46 @@
 import { describe, expect, it } from '@jest/globals';
-import { formatAmount, formatQuantity, parseQuantity } from '../formatQuantity';
+import {
+  formatAmount,
+  formatEditableQuantity,
+  formatQuantity,
+  parsePositiveQuantity,
+  parseQuantity,
+  parseStockQuantity,
+} from '../formatQuantity';
+
+describe('parsePositiveQuantity', () => {
+  it('accepts decimal comma and fractions', () => {
+    expect(parsePositiveQuantity('1,5')).toBe(1.5);
+    expect(parsePositiveQuantity('½')).toBe(0.5);
+  });
+
+  it('rejects empty, zero, negative and garbage input', () => {
+    expect(parsePositiveQuantity('')).toBeNull();
+    expect(parsePositiveQuantity('0')).toBeNull();
+    expect(parsePositiveQuantity('-2')).toBeNull();
+    expect(parsePositiveQuantity('abc')).toBeNull();
+  });
+});
+
+describe('parseStockQuantity', () => {
+  it('allows zero stock but rejects invalid input', () => {
+    expect(parseStockQuantity('0')).toBe(0);
+    expect(parseStockQuantity('0,0')).toBe(0);
+    expect(parseStockQuantity('2,5')).toBe(2.5);
+    expect(parseStockQuantity('')).toBeNull();
+    expect(parseStockQuantity('abc')).toBeNull();
+    expect(parseStockQuantity('-1')).toBeNull();
+  });
+});
+
+describe('formatEditableQuantity', () => {
+  it('round-trips exact decimals instead of snapping to cooking fractions', () => {
+    expect(formatEditableQuantity(0.2)).toBe('0,2');
+    expect(parseQuantity(formatEditableQuantity(0.2))).toBe(0.2);
+    expect(formatEditableQuantity(250)).toBe('250');
+    expect(formatEditableQuantity(1 / 3)).toBe('0,333');
+  });
+});
 
 describe('formatQuantity', () => {
   it('keeps whole numbers and halves', () => {

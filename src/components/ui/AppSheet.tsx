@@ -11,7 +11,7 @@ import {
 } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import Ionicons from '@expo/vector-icons/Ionicons';
-import { borderRadius, colors, shadows, spacing, typography } from '@/constants/theme';
+import { borderRadius, colors, layout, shadows, spacing, typography } from '@/constants/theme';
 import { Button } from '@/components/ui/Button';
 
 export function AppSheet({
@@ -52,7 +52,12 @@ export function AppSheet({
         behavior={Platform.OS === 'ios' ? 'padding' : undefined}
       >
         <View style={styles.root}>
-          <Pressable style={styles.backdrop} onPress={onClose} />
+          <Pressable
+            style={styles.backdrop}
+            onPress={onClose}
+            accessibilityRole="button"
+            accessibilityLabel="Zatvori"
+          />
           <View style={[styles.sheet, { paddingBottom: Math.max(insets.bottom, spacing.lg) }]}>
             <View style={styles.handle} />
             <View style={styles.header}>
@@ -143,10 +148,10 @@ const styles = StyleSheet.create({
   },
   handle: {
     alignSelf: 'center',
-    width: 36,
-    height: 4,
+    width: layout.sheetHandle.width,
+    height: layout.sheetHandle.height,
     borderRadius: borderRadius.full,
-    backgroundColor: '#E8DDD2',
+    backgroundColor: colors.sheetHandle,
     marginBottom: spacing.md,
   },
   header: {
@@ -157,7 +162,7 @@ const styles = StyleSheet.create({
   },
   headerText: {
     flex: 1,
-    gap: 4,
+    gap: spacing.xs,
   },
   title: {
     ...typography.h3,

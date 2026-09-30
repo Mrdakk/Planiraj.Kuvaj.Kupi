@@ -1,6 +1,6 @@
 import { StyleSheet, Text, View } from 'react-native';
 import Ionicons from '@expo/vector-icons/Ionicons';
-import { colors, typography, spacing } from '@/constants/theme';
+import { colors, iconSize, radii, typography, spacing } from '@/constants/theme';
 import { Button } from '@/components/ui/Button';
 
 interface EmptyStateProps {
@@ -21,10 +21,12 @@ export function EmptyState({
   return (
     <View style={styles.container}>
       <View style={styles.iconCircle}>
-        <Ionicons name={icon} size={32} color={colors.primary} />
+        <Ionicons name={icon} size={iconSize.xl} color={colors.primary} />
       </View>
-      <Text style={styles.title}>{title}</Text>
-      <Text style={styles.message}>{message}</Text>
+      <Text style={styles.title} accessibilityRole="header">
+        {title}
+      </Text>
+      {message ? <Text style={styles.message}>{message}</Text> : null}
       {actionTitle && onAction ? (
         <Button title={actionTitle} onPress={onAction} style={styles.action} />
       ) : null}
@@ -41,16 +43,16 @@ const styles = StyleSheet.create({
     margin: spacing.lg,
   },
   iconCircle: {
-    width: 64,
-    height: 64,
-    borderRadius: 32,
+    width: iconSize.xl * 2,
+    height: iconSize.xl * 2,
+    borderRadius: radii.pill,
     backgroundColor: colors.successSoft,
     alignItems: 'center',
     justifyContent: 'center',
     marginBottom: spacing.md,
   },
   title: {
-    ...typography.h3,
+    ...typography.displayTitle,
     color: colors.text,
     textAlign: 'center',
   },

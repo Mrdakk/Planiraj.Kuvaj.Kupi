@@ -1,8 +1,13 @@
-import { convertQuantity, type Unit } from '@/constants/units';
+import type { Unit } from '@/constants/units';
+import { mealTypes } from '@/constants/categories';
 import type { CalculationResult } from '@/calculations/engine';
 import type { Meal, Recipe } from '@/types';
 
+const EPSILON = 1e-6;
+
 export interface DayIngredientRow {
+  /** Same as the calculation result key: ingredient plus unit family. */
+  key: string;
   ingredientId: string;
   ingredientName: string;
   category: string;
@@ -23,25 +28,17 @@ export interface MissingDayGroup {
   recipes: DayRecipeGroup[];
 }
 
-function addQuantity(
-  existing: DayIngredientRow,
-  quantity: number,
-  unit: Unit
-): DayIngredientRow {
-  if (existing.unit === unit) {
-    return { ...existing, quantity: existing.quantity + quantity };
-  }
-  const converted = convertQuantity(quantity, unit, existing.unit);
-  if (converted !== null) {
-    return { ...existing, quantity: existing.quantity + converted };
-  }
-  const reverse = convertQuantity(existing.quantity, existing.unit, unit);
-  if (reverse !== null) {
-    return { ...existing, quantity: reverse + quantity, unit };
-  }
-  return existing;
+function compareMealsChronologically(a: Meal, b: Meal): number {
+  return (
+    a.date.localeCompare(b.date) ||
+    mealTypes.indexOf(a.mealType) - mealTypes.indexOf(b.mealType)
+  );
 }
 
+/**
+ * Splits each missing amount across the week's meals. Pantry stock covers the
+ * earliest meals first, so the day totals add up to exactly what is missing.
+ */
 export function groupMissingByDay(
   missing: CalculationResult[],
   meals: Meal[],
@@ -52,21 +49,21 @@ export function groupMissingByDay(
 
   const days = new Map<
     string,
-    Map<
-      string,
-      {
-        recipeName: string;
-        mealIds: Set<string>;
-        items: Map<string, DayIngredientRow>;
-      }
-    >
+    Map<string, { recipeName: string; mealIds: Set<string>; items: Map<string, DayIngredientRow> }>
   >();
 
   for (const item of missing) {
-    for (const breakdown of item.meals) {
-      const meal = mealMap.get(breakdown.mealId);
-      if (!meal) continue;
-      const recipeName = recipeMap.get(meal.recipeId)?.name ?? 'Recept';
+    let covered = Math.max(0, item.requiredQuantity - item.missingQuantity);
+    const breakdowns = item.meals
+      .map((breakdown) => ({ breakdown, meal: mealMap.get(breakdown.mealId) }))
+      .filter((entry): entry is { breakdown: typeof entry.breakdown; meal: Meal } => !!entry.meal)
+      .sort((a, b) => compareMealsChronologically(a.meal, b.meal));
+
+    for (const { breakdown, meal } of breakdowns) {
+      const fromPantry = Math.min(covered, breakdown.quantity);
+      covered -= fromPantry;
+      const quantity = breakdown.quantity - fromPantry;
+      if (quantity <= EPSILON) continue;
 
       let recipesForDay = days.get(meal.date);
       if (!recipesForDay) {
@@ -77,7 +74,7 @@ export function groupMissingByDay(
       let recipeGroup = recipesForDay.get(meal.recipeId);
       if (!recipeGroup) {
         recipeGroup = {
-          recipeName,
+          recipeName: recipeMap.get(meal.recipeId)?.name ?? 'Recept',
           mealIds: new Set(),
           items: new Map(),
         };
@@ -85,21 +82,15 @@ export function groupMissingByDay(
       }
       recipeGroup.mealIds.add(meal.id);
 
-      const current = recipeGroup.items.get(item.ingredientId);
-      if (current) {
-        recipeGroup.items.set(
-          item.ingredientId,
-          addQuantity(current, breakdown.quantity, breakdown.unit)
-        );
-      } else {
-        recipeGroup.items.set(item.ingredientId, {
-          ingredientId: item.ingredientId,
-          ingredientName: item.ingredientName,
-          category: item.category,
-          quantity: breakdown.quantity,
-          unit: breakdown.unit,
-        });
-      }
+      const current = recipeGroup.items.get(item.key);
+      recipeGroup.items.set(item.key, {
+        key: item.key,
+        ingredientId: item.ingredientId,
+        ingredientName: item.ingredientName,
+        category: item.category,
+        quantity: (current?.quantity ?? 0) + quantity,
+        unit: item.missingUnit,
+      });
     }
   }
 

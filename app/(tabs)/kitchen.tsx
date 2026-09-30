@@ -2,7 +2,7 @@ import { useState, useMemo } from 'react';
 import { FlatList, StyleSheet, Switch, Text, TextInput, View } from 'react-native';
 import { useRouter } from 'expo-router';
 import { SafeAreaView } from 'react-native-safe-area-context';
-import { colors, typography, spacing, borderRadius } from '@/constants/theme';
+import { colors, typography, spacing, borderRadius, layout } from '@/constants/theme';
 import { usePantryItems, useUpdatePantryItem } from '@/hooks/usePantryItems';
 import { useIngredients } from '@/hooks/useIngredients';
 import { ChipRow } from '@/components/ui/ChipRow';
@@ -16,6 +16,7 @@ import { sortPantryItemsByIngredientName } from '@/features/pantry/sort';
 import { formatAmount } from '@/lib/formatQuantity';
 import { displayIngredientName, ingredientMatchesSearch } from '@/lib/ingredientNames';
 import { getIngredientEmoji } from '@/constants/emojis';
+import { useIngredientEmojiEditor } from '@/features/ingredients/IngredientEmojiSheet';
 import { ingredientCategories } from '@/constants/categories';
 
 export default function KitchenScreen() {
@@ -23,6 +24,7 @@ export default function KitchenScreen() {
   const { data: pantryItems, isLoading } = usePantryItems();
   const { data: ingredients } = useIngredients();
   const updatePantry = useUpdatePantryItem();
+  const { editIngredientEmoji, ingredientEmojiSheet } = useIngredientEmojiEditor();
   const [search, setSearch] = useState('');
   const [selectedCategory, setSelectedCategory] = useState<string | null>(null);
 
@@ -95,8 +97,9 @@ export default function KitchenScreen() {
             const outOfStock = presence ? !isPresenceInStock(item.quantity) : item.quantity <= 0;
             return (
               <ListRow
-                emoji={getIngredientEmoji(name, ingredient?.category, ingredient?.emoji)}
+                emoji={getIngredientEmoji(name, ingredient?.category, ingredient?.emoji, ingredient?.emojiSource)}
                 title={name}
+                onEmojiPress={ingredient ? () => editIngredientEmoji(ingredient) : undefined}
                 subtitle={expiry ?? ingredient?.category}
                 trailing={presence ? undefined : formatAmount(item.quantity, item.unit)}
                 trailingColor={outOfStock ? colors.danger : colors.success}
@@ -112,7 +115,7 @@ export default function KitchenScreen() {
                         })
                       }
                       trackColor={{ false: colors.border, true: colors.primary }}
-                      thumbColor="#fff"
+                      thumbColor={colors.switchThumb}
                     />
                   ) : undefined
                 }
@@ -129,6 +132,8 @@ export default function KitchenScreen() {
           icon="basket-outline"
         />
       )}
+
+      {ingredientEmojiSheet}
 
       <FabButton
         title="+ Dodaj namirnicu"
@@ -167,11 +172,11 @@ const styles = StyleSheet.create({
     marginBottom: spacing.sm,
   },
   list: {
-    paddingBottom: 96,
+    paddingBottom: layout.fabClearance,
   },
   separator: {
-    height: 1,
+    height: StyleSheet.hairlineWidth,
     backgroundColor: colors.border,
-    marginLeft: 72,
+    marginLeft: layout.listInset,
   },
 });

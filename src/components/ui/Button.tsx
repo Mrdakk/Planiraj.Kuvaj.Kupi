@@ -1,5 +1,5 @@
-import { Pressable, StyleSheet, Text, ViewStyle, TextStyle } from 'react-native';
-import { colors, typography, spacing } from '@/constants/theme';
+import { ActivityIndicator, Pressable, StyleSheet, Text, ViewStyle, TextStyle } from 'react-native';
+import { colors, layout, radii, spacing, typography } from '@/constants/theme';
 
 type ButtonVariant = 'primary' | 'secondary' | 'danger' | 'ghost';
 
@@ -11,7 +11,22 @@ interface ButtonProps {
   loading?: boolean;
   style?: ViewStyle;
   textStyle?: TextStyle;
+  accessibilityLabel?: string;
 }
+
+const BACKGROUND: Record<ButtonVariant, string> = {
+  primary: colors.primary,
+  secondary: colors.surfaceRaised,
+  danger: colors.danger,
+  ghost: 'transparent',
+};
+
+const FOREGROUND: Record<ButtonVariant, string> = {
+  primary: colors.onPrimary,
+  secondary: colors.text,
+  danger: colors.onPrimary,
+  ghost: colors.text,
+};
 
 export function Button({
   title,
@@ -21,35 +36,30 @@ export function Button({
   loading = false,
   style,
   textStyle,
+  accessibilityLabel,
 }: ButtonProps) {
-  const backgroundColor = {
-    primary: colors.primary,
-    secondary: colors.surfaceRaised,
-    danger: colors.danger,
-    ghost: 'transparent',
-  }[variant];
-
-  const textColor = {
-    primary: colors.onPrimary,
-    secondary: colors.text,
-    danger: colors.onPrimary,
-    ghost: colors.text,
-  }[variant];
-
+  const inactive = disabled || loading;
   return (
     <Pressable
       onPress={onPress}
-      disabled={disabled || loading}
+      disabled={inactive}
+      accessibilityRole="button"
+      accessibilityLabel={accessibilityLabel ?? title}
+      accessibilityState={{ disabled: inactive, busy: loading }}
       style={({ pressed }) => [
         styles.button,
         variant === 'ghost' && styles.ghost,
-        { backgroundColor, opacity: pressed || disabled ? 0.7 : 1 },
+        { backgroundColor: BACKGROUND[variant] },
+        disabled && !loading && styles.disabled,
+        pressed && styles.pressed,
         style,
       ]}
     >
-      <Text style={[styles.text, { color: textColor }, textStyle]}>
-        {loading ? 'Učitavanje...' : title}
-      </Text>
+      {loading ? (
+        <ActivityIndicator color={FOREGROUND[variant]} />
+      ) : (
+        <Text style={[styles.text, { color: FOREGROUND[variant] }, textStyle]}>{title}</Text>
+      )}
     </Pressable>
   );
 }
@@ -58,15 +68,21 @@ const styles = StyleSheet.create({
   button: {
     paddingVertical: spacing.md,
     paddingHorizontal: spacing.lg,
-    borderRadius: 12,
+    borderRadius: radii.button,
     alignItems: 'center',
     justifyContent: 'center',
-    minHeight: 48,
+    minHeight: layout.controlHeight,
     flexDirection: 'row',
   },
   ghost: {
     borderWidth: 1,
     borderColor: colors.border,
+  },
+  disabled: {
+    opacity: 0.45,
+  },
+  pressed: {
+    opacity: 0.8,
   },
   text: {
     ...typography.button,

@@ -294,6 +294,37 @@ describe('meal detail actions: mark as cooked', () => {
       expect.objectContaining({ id: 'pantry-onion', quantity: 0 })
     );
   });
+
+  it('logs presence changes so undo can restore them', async () => {
+    const meal = createMeal();
+    recipes.findManyWhere.mockResolvedValue([
+      createRecipeIngredient({ ingredientId: 'ing-onion', quantity: 2, unit: 'glavica' }),
+    ]);
+    pantry.findAll.mockResolvedValue([
+      createPantryItem({ id: 'pantry-onion', ingredientId: 'ing-onion', quantity: 1, unit: 'glavica' }),
+    ]);
+    ingredients.findAll.mockResolvedValue([
+      { id: 'ing-onion', name: 'Crni luk', trackPresence: true },
+    ]);
+
+    await consumeMeal({
+      meal,
+      recipeBaseServings: 4,
+      presenceStillHave: new Map([['ing-onion', false]]),
+    });
+
+    expect(logsRepo.insert).toHaveBeenCalledWith(
+      expect.objectContaining({ ingredientId: 'ing-onion', quantity: 1, unit: 'glavica' })
+    );
+  });
+
+  it('refuses to cook a meal that is already cooked', async () => {
+    await expect(
+      consumeMeal({ meal: createMeal({ isCooked: true }), recipeBaseServings: 4 })
+    ).rejects.toThrow('Obrok je već označen kao kuvano.');
+    expect(pantry.update).not.toHaveBeenCalled();
+    expect(meals.update).not.toHaveBeenCalled();
+  });
 });
 
 describe('unconsumeMeal', () => {
@@ -356,6 +387,18 @@ describe('unconsumeMeal', () => {
     expect(pantry.insert).not.toHaveBeenCalled();
     expect(logsRepo.delete).not.toHaveBeenCalled();
     expect(meals.update).toHaveBeenCalledWith(expect.objectContaining({ isCooked: false }));
+  });
+
+  it('does not create a negative pantry row from a presence log', async () => {
+    const meal = createMeal({ isCooked: true });
+    logsRepo.findManyWhere.mockResolvedValue([
+      createConsumptionLog({ ingredientId: 'ing-onion', quantity: -1, unit: 'glavica' }),
+    ]);
+    pantry.findAll.mockResolvedValue([]);
+
+    await unconsumeMeal(meal);
+
+    expect(pantry.insert).not.toHaveBeenCalled();
   });
 
   it('refuses to undo a meal that is not cooked', async () => {

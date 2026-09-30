@@ -32,16 +32,3 @@ export async function normalizeIngredientName(
   return { ingredient: null, aliases: [], confidence: 'none' };
 }
 
-export function normalizeName(rawName: string): string {
-  return ingredientNameKey(rawName);
-}
-
-export function findDuplicates(
-  ingredients: Ingredient[],
-  rawName: string
-): Ingredient[] {
-  const normalized = normalizeName(rawName);
-  return ingredients.filter(
-    (i) => normalizeName(i.name) === normalized
-  );
-}

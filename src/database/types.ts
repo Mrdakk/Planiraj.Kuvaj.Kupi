@@ -16,6 +16,7 @@ export interface SQLiteIngredientRow extends SyncableRow {
   category: string;
   default_unit: string;
   emoji: string | null;
+  emoji_source: string | null;
   track_presence: number;
 }
 

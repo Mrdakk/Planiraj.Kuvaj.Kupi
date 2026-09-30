@@ -3,7 +3,7 @@ import { Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
 import { Stack, useRouter } from 'expo-router';
 import { useQueryClient } from '@tanstack/react-query';
 import { SafeAreaView } from 'react-native-safe-area-context';
-import { colors, typography, spacing } from '@/constants/theme';
+import { colors, typography, spacing, layout } from '@/constants/theme';
 import { ChipRow } from '@/components/ui/ChipRow';
 import { Button } from '@/components/ui/Button';
 import { Card } from '@/components/ui/Card';
@@ -16,7 +16,7 @@ import { IngredientRenameSheet } from '@/features/ingredients/IngredientRenameSh
 import { createRecipeWithIngredients, type RecipeIngredientInput } from '@/features/recipes/service';
 import { importRecipeFromText, importRecipeFromUrl, type ImportedRecipe } from '@/features/recipes/importFromUrl';
 import { useIngredients } from '@/hooks/useIngredients';
-import { queryKeys } from '@/hooks/queryKeys';
+import { invalidateAfterRecipeChange } from '@/hooks/invalidate';
 import { formatAmount } from '@/lib/formatQuantity';
 import { formatServings } from '@/lib/formatServings';
 import { displayIngredientName } from '@/lib/ingredientNames';
@@ -100,8 +100,7 @@ export default function ImportRecipeScreen() {
     setSaving(true);
     try {
       const recipe = await createRecipeWithIngredients(preview);
-      await queryClient.invalidateQueries({ queryKey: queryKeys.recipes });
-      await queryClient.invalidateQueries({ queryKey: queryKeys.ingredients });
+      await invalidateAfterRecipeChange(queryClient);
       router.replace(`/recipes/${recipe.id}`);
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Recept nije sačuvan. Pokušaj ponovo.');
@@ -154,7 +153,7 @@ export default function ImportRecipeScreen() {
               <Card tone="bone" style={styles.ingredientCard}>
                 <View style={styles.ingredientRow}>
                   <EmojiBadge
-                    emoji={getIngredientEmoji(name, linked?.category, linked?.emoji)}
+                    emoji={getIngredientEmoji(name, linked?.category, linked?.emoji, linked?.emojiSource)}
                     size={36}
                     name={name}
                   />
@@ -383,7 +382,7 @@ const styles = StyleSheet.create({
   stepNumber: {
     ...typography.body,
     color: colors.primary,
-    width: 28,
+    width: layout.stepIndexWidth,
   },
   stepText: {
     ...typography.body,

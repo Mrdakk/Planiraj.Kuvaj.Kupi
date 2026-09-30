@@ -9,7 +9,7 @@ import {
 } from 'react-native';
 import { useQueryClient } from '@tanstack/react-query';
 import { SafeAreaView } from 'react-native-safe-area-context';
-import { colors, typography, spacing, borderRadius } from '@/constants/theme';
+import { colors, typography, spacing, borderRadius, layout } from '@/constants/theme';
 import { Button } from '@/components/ui/Button';
 import { Card } from '@/components/ui/Card';
 import { ChipRow } from '@/components/ui/ChipRow';
@@ -21,6 +21,7 @@ import { AppSheet, SheetFooter } from '@/components/ui/AppSheet';
 import { ConfirmSheet } from '@/components/ui/ConfirmSheet';
 import { ToggleRow } from '@/components/ui/ToggleRow';
 import { getIngredientEmoji, getRecipeEmoji } from '@/constants/emojis';
+import { useIngredientEmojiEditor } from '@/features/ingredients/IngredientEmojiSheet';
 import { useMeal } from '@/hooks/useMealPlans';
 import { useRecipe } from '@/hooks/useRecipes';
 import { useIngredients } from '@/hooks/useIngredients';
@@ -33,7 +34,7 @@ import { formatServings } from '@/lib/formatServings';
 import { displayIngredientName } from '@/lib/ingredientNames';
 import { formatDisplayDate, isCreatedToday, todayISO } from '@/lib/dates';
 import { NewBadge } from '@/components/ui/NewBadge';
-import { queryKeys } from '@/hooks/queryKeys';
+import { invalidateAfterMealChange } from '@/hooks/invalidate';
 import { mealTypes, type MealType } from '@/constants/categories';
 
 export default function MealDetailScreen() {
@@ -43,6 +44,7 @@ export default function MealDetailScreen() {
   const { data: meal, isLoading } = useMeal(id);
   const { data: recipe, isLoading: recipeLoading } = useRecipe(meal?.recipeId ?? '');
   const { data: ingredients } = useIngredients();
+  const { editIngredientEmoji, ingredientEmojiSheet } = useIngredientEmojiEditor();
 
   const [preview, setPreview] = useState<ConsumptionPreviewItem[] | null>(null);
   const [pendingPresence, setPendingPresence] = useState<ConsumptionPreviewItem[]>([]);
@@ -58,23 +60,27 @@ export default function MealDetailScreen() {
   const [busy, setBusy] = useState(false);
   const [confirmDelete, setConfirmDelete] = useState(false);
   const [confirmUncook, setConfirmUncook] = useState(false);
-  const [notice, setNotice] = useState<{ title: string; message: string } | null>(null);
+  const [notice, setNotice] = useState<{
+    title: string;
+    message: string;
+    tone: 'success' | 'danger';
+    leaveAfter: boolean;
+  } | null>(null);
 
   const ingredientById = new Map(ingredients?.map((item) => [item.id, item]) ?? []);
 
-  const invalidateMealData = async (planId?: string) => {
-    await Promise.all([
-      queryClient.invalidateQueries({ queryKey: queryKeys.meal(id) }),
-      queryClient.invalidateQueries({ queryKey: queryKeys.mealPlans }),
-      queryClient.invalidateQueries({ queryKey: planId ? queryKeys.meals(planId) : queryKeys.mealPlans }),
-      queryClient.invalidateQueries({ queryKey: queryKeys.pantryItems }),
-      queryClient.invalidateQueries({ queryKey: queryKeys.missing }),
-      queryClient.invalidateQueries({ queryKey: ['consumptionLogs'] }),
-    ]);
-  };
+  const invalidateMealData = () => invalidateAfterMealChange(queryClient, id);
+
+  const showError = (title: string, err: unknown) =>
+    setNotice({
+      title,
+      message: err instanceof Error ? err.message : 'Pokušaj ponovo.',
+      tone: 'danger',
+      leaveAfter: false,
+    });
 
   const handleCook = async () => {
-    if (!meal || !recipe) return;
+    if (!meal || !recipe || busy || meal.isCooked) return;
     const names = new Map<string, string>();
     for (const item of recipe.ingredients) {
       if (item.ingredientName?.trim()) {
@@ -86,7 +92,13 @@ export default function MealDetailScreen() {
         names.set(id, ingredient.name.trim());
       }
     }
-    const previewResult = await buildConsumptionPreview(meal, recipe.baseServings, names);
+    let previewResult;
+    try {
+      previewResult = await buildConsumptionPreview(meal, recipe.baseServings, names);
+    } catch (err) {
+      showError('Kuvanje nije uspelo', err);
+      return;
+    }
     const counted = previewResult.items.filter((item) => !item.trackPresence);
     const presence = previewResult.items.filter((item) => item.trackPresence);
     countedOverrides.current = new Map();
@@ -105,18 +117,11 @@ export default function MealDetailScreen() {
       );
       return;
     }
-    setBusy(true);
-    try {
-      await consumeMeal({ meal, recipeBaseServings: recipe.baseServings });
-      await invalidateMealData(meal.mealPlanId);
-      router.back();
-    } finally {
-      setBusy(false);
-    }
+    await finishCook();
   };
 
   const finishCook = async (presenceStillHave?: Map<string, boolean>) => {
-    if (!meal || !recipe) return;
+    if (!meal || !recipe || busy) return;
     setBusy(true);
     try {
       await consumeMeal({
@@ -128,15 +133,19 @@ export default function MealDetailScreen() {
       setPreview(null);
       setPresenceChecks(null);
       setPendingPresence([]);
-      await invalidateMealData(meal.mealPlanId);
+      await invalidateMealData();
       router.back();
+    } catch (err) {
+      setPreview(null);
+      setPresenceChecks(null);
+      showError('Kuvanje nije uspelo', err);
     } finally {
       setBusy(false);
     }
   };
 
   const confirmCook = async () => {
-    if (!preview) return;
+    if (!preview || busy) return;
     countedOverrides.current = new Map(preview.map((item) => [item.ingredientId, item.willConsume]));
     if (pendingPresence.length > 0) {
       setPreview(null);
@@ -194,27 +203,28 @@ export default function MealDetailScreen() {
     try {
       if (relocateMode === 'copy') {
         await copyMeal(meal, targetDate, targetMealType);
-        await invalidateMealData(meal.mealPlanId);
+        await invalidateMealData();
         setRelocateMode(null);
         setNotice({
           title: 'Obrok kopiran',
           message: `Kopija je na ${formatDisplayDate(targetDate)} · ${targetMealType}.`,
+          tone: 'success',
+          leaveAfter: false,
         });
         return;
       }
 
       await moveMeal(meal, targetDate, targetMealType);
-      await invalidateMealData(meal.mealPlanId);
+      await invalidateMealData();
       setRelocateMode(null);
       setNotice({
         title: 'Obrok pomeren',
         message: `Sada je na ${formatDisplayDate(targetDate)} · ${targetMealType}.`,
+        tone: 'success',
+        leaveAfter: true,
       });
     } catch (err) {
-      setNotice({
-        title: 'Nije sačuvano',
-        message: err instanceof Error ? err.message : 'Pokušaj ponovo.',
-      });
+      showError('Nije sačuvano', err);
     } finally {
       setBusy(false);
     }
@@ -226,11 +236,19 @@ export default function MealDetailScreen() {
   };
 
   const confirmDeleteMeal = async () => {
-    if (!meal || !canDeleteMeal(meal)) return;
-    await deleteMeal(meal);
-    setConfirmDelete(false);
-    await invalidateMealData(meal.mealPlanId);
-    router.back();
+    if (!meal || !canDeleteMeal(meal) || busy) return;
+    setBusy(true);
+    try {
+      await deleteMeal(meal);
+      setConfirmDelete(false);
+      await invalidateMealData();
+      router.back();
+    } catch (err) {
+      setConfirmDelete(false);
+      showError('Brisanje nije uspelo', err);
+    } finally {
+      setBusy(false);
+    }
   };
 
   const confirmUncookMeal = async () => {
@@ -239,15 +257,22 @@ export default function MealDetailScreen() {
     try {
       await unconsumeMeal(meal);
       setConfirmUncook(false);
-      await invalidateMealData(meal.mealPlanId);
-    } catch {
+      await invalidateMealData();
+    } catch (err) {
       setConfirmUncook(false);
+      showError('Poništavanje nije uspelo', err);
     } finally {
       setBusy(false);
     }
   };
 
-  if (isLoading || recipeLoading) {
+  const dismissNotice = () => {
+    const leave = notice?.leaveAfter;
+    setNotice(null);
+    if (leave) router.back();
+  };
+
+  if (isLoading || (meal && recipeLoading)) {
     return (
       <SafeAreaView style={styles.container} edges={['top']}>
         <Text style={styles.loadingText}>Učitavanje...</Text>
@@ -255,10 +280,38 @@ export default function MealDetailScreen() {
     );
   }
 
-  if (!meal || !recipe) {
+  if (!meal) {
     return (
       <SafeAreaView style={styles.container} edges={['top']}>
-        <EmptyState title="Obrok nije pronađen" message="" />
+        <EmptyState
+          title="Obrok nije pronađen"
+          message="Možda je obrisan na drugom uređaju."
+          actionTitle="Nazad"
+          onAction={() => router.back()}
+        />
+      </SafeAreaView>
+    );
+  }
+
+  if (!recipe) {
+    return (
+      <SafeAreaView style={styles.container} edges={['top']}>
+        <EmptyState
+          title="Recept više ne postoji"
+          message={`Obrok za ${formatDisplayDate(meal.date)} · ${meal.mealType} ostao je bez recepta.`}
+          actionTitle={canDeleteMeal(meal) ? 'Obriši obrok' : 'Nazad'}
+          onAction={canDeleteMeal(meal) ? handleDelete : () => router.back()}
+        />
+        <ConfirmSheet
+          visible={confirmDelete}
+          title="Obriši obrok"
+          message="Obrok nestaje iz plana. Ovo se ne može opozvati."
+          confirmLabel="Obriši"
+          variant="danger"
+          loading={busy}
+          onConfirm={confirmDeleteMeal}
+          onCancel={() => setConfirmDelete(false)}
+        />
       </SafeAreaView>
     );
   }
@@ -309,15 +362,23 @@ export default function MealDetailScreen() {
               return (
                 <Card key={item.id} tone="bone" style={styles.ingredientCard}>
                   <View style={styles.ingredientRow}>
-                    <EmojiBadge
-                      emoji={getIngredientEmoji(
-                        item.name,
-                        ingredient?.category,
-                        ingredient?.emoji
-                      )}
-                      size={36}
-                      name={item.name}
-                    />
+                    <Pressable
+                      onPress={() => ingredient && editIngredientEmoji(ingredient)}
+                      disabled={!ingredient}
+                      accessibilityRole="button"
+                      accessibilityLabel={`Promeni ikonicu za ${item.name}`}
+                    >
+                      <EmojiBadge
+                        emoji={getIngredientEmoji(
+                          item.name,
+                          ingredient?.category,
+                          ingredient?.emoji,
+                          ingredient?.emojiSource
+                        )}
+                        size={36}
+                        name={item.name}
+                      />
+                    </Pressable>
                     <View style={styles.ingredientBody}>
                       <Text style={styles.ingredientName}>{item.name}</Text>
                       <Text style={styles.ingredientQuantity}>
@@ -368,9 +429,10 @@ export default function MealDetailScreen() {
               title="Poništi kuvanje"
               onPress={() => setConfirmUncook(true)}
               variant="secondary"
+              loading={busy}
             />
           ) : (
-            <Button title="Označi kao kuvano" onPress={handleCook} />
+            <Button title="Označi kao kuvano" onPress={handleCook} loading={busy} />
           )}
           <Button
             title="Otvori recept"
@@ -414,7 +476,7 @@ export default function MealDetailScreen() {
             return (
               <View key={item.ingredientId} style={styles.previewRow}>
                 <EmojiBadge
-                  emoji={getIngredientEmoji(name, ingredient?.category, ingredient?.emoji)}
+                  emoji={getIngredientEmoji(name, ingredient?.category, ingredient?.emoji, ingredient?.emojiSource)}
                   name={name}
                   size={40}
                 />
@@ -562,6 +624,7 @@ export default function MealDetailScreen() {
         message="Zalihe se vraćaju u kuhinju. Obrok više nije označen kao kuvano."
         confirmLabel="Poništi"
         variant="warning"
+        loading={busy}
         onConfirm={confirmUncookMeal}
         onCancel={() => setConfirmUncook(false)}
       />
@@ -572,6 +635,7 @@ export default function MealDetailScreen() {
         message="Obrok nestaje iz plana. Ovo se ne može opozvati."
         confirmLabel="Obriši"
         variant="danger"
+        loading={busy}
         onConfirm={confirmDeleteMeal}
         onCancel={() => setConfirmDelete(false)}
       />
@@ -581,17 +645,12 @@ export default function MealDetailScreen() {
         title={notice?.title ?? ''}
         message={notice?.message ?? ''}
         confirmLabel="U redu"
-        variant="success"
+        variant={notice?.tone ?? 'success'}
         hideCancel
-        onConfirm={() => {
-          setNotice(null);
-          router.back();
-        }}
-        onCancel={() => {
-          setNotice(null);
-          router.back();
-        }}
+        onConfirm={dismissNotice}
+        onCancel={dismissNotice}
       />
+      {ingredientEmojiSheet}
     </SafeAreaView>
   );
 }
@@ -688,7 +747,7 @@ const styles = StyleSheet.create({
   stepNumber: {
     ...typography.body,
     color: colors.primary,
-    width: 28,
+    width: layout.stepIndexWidth,
   },
   stepText: {
     ...typography.body,
@@ -734,17 +793,17 @@ const styles = StyleSheet.create({
   previewMeta: {
     ...typography.caption,
     color: colors.textMuted,
-    marginTop: 2,
+    marginTop: spacing.xxs,
   },
   previewSide: {
     alignItems: 'flex-end',
-    gap: 6,
+    gap: spacing.xs,
   },
   qtyPill: {
     backgroundColor: colors.dangerSoft,
     borderRadius: borderRadius.full,
     paddingHorizontal: spacing.sm,
-    paddingVertical: 4,
+    paddingVertical: spacing.xs,
   },
   qtyPillMuted: {
     backgroundColor: colors.surfaceRaised,
@@ -760,7 +819,7 @@ const styles = StyleSheet.create({
   },
   partialChip: {
     paddingHorizontal: spacing.sm,
-    paddingVertical: 4,
+    paddingVertical: spacing.xs,
     borderRadius: borderRadius.full,
     backgroundColor: colors.surfaceRaised,
   },

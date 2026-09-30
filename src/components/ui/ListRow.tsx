@@ -1,6 +1,6 @@
 import { Pressable, StyleSheet, Text, View, type GestureResponderEvent } from 'react-native';
 import Ionicons from '@expo/vector-icons/Ionicons';
-import { colors, spacing, typography } from '@/constants/theme';
+import { colors, hit, layout, spacing, typography } from '@/constants/theme';
 import { EmojiBadge } from '@/components/ui/EmojiBadge';
 import { NewBadge } from '@/components/ui/NewBadge';
 import type { ReactNode } from 'react';
@@ -17,6 +17,7 @@ interface ListRowProps {
   checked?: boolean;
   showCheck?: boolean;
   onPress?: () => void;
+  onEmojiPress?: () => void;
   onToggleCheck?: () => void;
   showNew?: boolean;
   highlighted?: boolean;
@@ -36,6 +37,7 @@ export function ListRow({
   checked,
   showCheck,
   onPress,
+  onEmojiPress,
   onToggleCheck,
   showNew = false,
   highlighted = false,
@@ -68,7 +70,9 @@ export function ListRow({
             onToggleCheck?.();
           }}
           style={styles.check}
-          hitSlop={8}
+          accessibilityRole="checkbox"
+          accessibilityState={{ checked: !!checked }}
+          accessibilityLabel={title}
         >
           <Ionicons
             name={checked ? 'checkbox' : 'square-outline'}
@@ -78,7 +82,21 @@ export function ListRow({
         </Pressable>
       ) : null}
 
-      <EmojiBadge emoji={emoji} size={44} name={title} />
+      {onEmojiPress ? (
+        <Pressable
+          onPress={(event: GestureResponderEvent) => {
+            event.stopPropagation();
+            onEmojiPress();
+          }}
+          hitSlop={6}
+          accessibilityRole="button"
+          accessibilityLabel={`Promeni ikonicu za ${title}`}
+        >
+          <EmojiBadge emoji={emoji} size={44} name={title} />
+        </Pressable>
+      ) : (
+        <EmojiBadge emoji={emoji} size={44} name={title} />
+      )}
 
       <View style={styles.body}>
         <View style={styles.titleRow}>
@@ -118,7 +136,7 @@ const styles = StyleSheet.create({
     opacity: 0.7,
   },
   highlighted: {
-    backgroundColor: '#FFF6EC',
+    backgroundColor: colors.primarySoft,
   },
   plain: {
     backgroundColor: 'transparent',
@@ -127,7 +145,7 @@ const styles = StyleSheet.create({
     backgroundColor: colors.dangerSoft,
   },
   dayCol: {
-    width: 86,
+    width: layout.dayColumnWidth,
     alignItems: 'flex-start',
   },
   dayText: {
@@ -139,10 +157,16 @@ const styles = StyleSheet.create({
     ...typography.caption,
     color: colors.text,
     fontWeight: '700',
-    marginTop: 1,
+    marginTop: spacing.xxs,
   },
   check: {
-    marginRight: -spacing.xs,
+    width: hit.min,
+    height: hit.min,
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginVertical: -spacing.sm,
+    marginLeft: -spacing.sm,
+    marginRight: -spacing.md,
   },
   body: {
     flex: 1,
@@ -168,7 +192,7 @@ const styles = StyleSheet.create({
   subtitle: {
     ...typography.caption,
     color: colors.textMuted,
-    marginTop: 2,
+    marginTop: spacing.xxs,
   },
   trailing: {
     ...typography.bodySmall,

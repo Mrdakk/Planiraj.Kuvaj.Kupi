@@ -13,7 +13,10 @@ const dbGlobal = globalThis as DbGlobal;
 export async function getDatabase(): Promise<SQLite.SQLiteDatabase> {
   if (dbGlobal.__pkkSqlite) return dbGlobal.__pkkSqlite;
   if (!dbGlobal.__pkkSqliteInit) {
-    dbGlobal.__pkkSqliteInit = initializeDatabase();
+    dbGlobal.__pkkSqliteInit = initializeDatabase().catch((error: unknown) => {
+      dbGlobal.__pkkSqliteInit = undefined;
+      throw error;
+    });
   }
   return dbGlobal.__pkkSqliteInit;
 }
@@ -57,11 +60,31 @@ async function migrateDatabase(db: SQLite.SQLiteDatabase): Promise<void> {
     const sql = schemaMigrations[version];
     if (!sql) continue;
 
-    await db.execAsync(sql);
+    await execMigration(db, sql);
     await db.runAsync(
       'INSERT INTO migrations (version, applied_at) VALUES (?, ?)',
       [version, new Date().toISOString()]
     );
+  }
+}
+
+/**
+ * Runs one statement at a time so a re-run (lost migrations row) skips columns
+ * that already exist instead of aborting. The schema has no triggers, so `;`
+ * only ends statements.
+ */
+export async function execMigration(db: SQLite.SQLiteDatabase, sql: string): Promise<void> {
+  const statements = sql
+    .split(';')
+    .map((statement) => statement.trim())
+    .filter((statement) => statement && !/^(--[^\n]*\n?)+$/.test(statement));
+  for (const statement of statements) {
+    try {
+      await db.execAsync(`${statement};`);
+    } catch (error) {
+      if (/duplicate column name/i.test(String(error))) continue;
+      throw error;
+    }
   }
 }
 

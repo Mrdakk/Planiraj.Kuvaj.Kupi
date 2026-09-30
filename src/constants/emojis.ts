@@ -1,4 +1,9 @@
 import type { IngredientCategory } from '@/constants/categories';
+import { canonicalIngredientEmoji, matchIngredientEmoji } from '@/constants/ingredientEmojis';
+
+export { isAllowedIngredientEmoji } from '@/constants/ingredientEmojis';
+
+export type IngredientEmojiSource = 'user' | 'ai';
 
 const RECIPE_KEYWORDS: [string, string][] = [
   ['bolonjeze', '🍝'],
@@ -16,49 +21,6 @@ const RECIPE_KEYWORDS: [string, string][] = [
   ['pile', '🍗'],
   ['fajita', '🌮'],
   ['tortilja', '🌮'],
-];
-
-const INGREDIENT_KEYWORDS: [string, string][] = [
-  ['beli luk', '🧄'],
-  ['crni luk', '🧅'],
-  ['luk', '🧅'],
-  ['pasulj', '🫘'],
-  ['slanina', '🥓'],
-  ['krompir', '🥔'],
-  ['brašno', '🌾'],
-  ['aleva paprika', '🌶️'],
-  ['paprika', '🫑'],
-  ['kurkuma', '🟡'],
-  ['goveđa kocka', '🧊'],
-  ['paradajz', '🍅'],
-  ['maslinovo ulje', '🫒'],
-  ['ulje', '🫙'],
-  ['bosiljak', '🌿'],
-  ['mleveno meso', '🥩'],
-  ['meso', '🥩'],
-  ['vegeta', '🧂'],
-  ['kumin', '🌿'],
-  ['peršun', '🌿'],
-  ['origano', '🌿'],
-  ['lovor', '🍃'],
-  ['jaja', '🥚'],
-  ['jaje', '🥚'],
-  ['mleko', '🥛'],
-  ['pavlaka', '🥛'],
-  ['kačkavalj', '🧀'],
-  ['parmezan', '🧀'],
-  ['sir', '🧀'],
-  ['špageti', '🍝'],
-  ['testenina', '🍝'],
-  ['so', '🧂'],
-  ['biber', '🧂'],
-  ['voda', '💧'],
-  ['pirinač', '🍚'],
-  ['kukuruz', '🌽'],
-  ['pečurke', '🍄'],
-  ['pečurka', '🍄'],
-  ['hleb', '🍞'],
-  ['piletina', '🍗'],
 ];
 
 const CATEGORY_EMOJI: Record<IngredientCategory, string> = {
@@ -122,15 +84,32 @@ export function getRecipeEmoji(name: string, stored?: string | null): string {
 
 export function getIngredientEmoji(
   name: string,
-  category?: string,
-  stored?: string | null
+  category?: string | null,
+  stored?: string | null,
+  source?: IngredientEmojiSource | null
 ): string {
-  return (
-    normalizeRecipeEmoji(stored) ??
-    matchKeyword(name, INGREDIENT_KEYWORDS) ??
-    (category && category in CATEGORY_EMOJI
-      ? CATEGORY_EMOJI[category as IngredientCategory]
-      : null) ??
-    '🧺'
-  );
+  const saved = canonicalIngredientEmoji(normalizeRecipeEmoji(stored));
+  if (source === 'user' && saved) return saved;
+
+  const fromName = matchIngredientEmoji(name);
+  if (fromName) return fromName;
+
+  if (saved) return saved;
+
+  if (category && category in CATEGORY_EMOJI) {
+    return CATEGORY_EMOJI[category as IngredientCategory];
+  }
+  return '🧺';
+}
+
+export function needsIngredientEmojiSuggestion(input: {
+  name: string;
+  emoji?: string | null;
+  emojiSource?: IngredientEmojiSource | null;
+}): boolean {
+  const saved = canonicalIngredientEmoji(normalizeRecipeEmoji(input.emoji));
+  if (input.emojiSource === 'user' && saved) return false;
+  if (matchIngredientEmoji(input.name)) return false;
+  if (saved) return false;
+  return true;
 }

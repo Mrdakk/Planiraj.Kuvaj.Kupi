@@ -1,6 +1,6 @@
 import { Stack, useLocalSearchParams, useRouter } from 'expo-router';
 import { useEffect, useMemo, useState } from 'react';
-import { ScrollView, StyleSheet, Text, TextInput, View } from 'react-native';
+import { Pressable, ScrollView, StyleSheet, Text, TextInput, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { Picker } from '@react-native-picker/picker';
 import Ionicons from '@expo/vector-icons/Ionicons';
@@ -23,12 +23,14 @@ import {
 } from '@/hooks/usePantryItems';
 import { useIngredients, useUpdateIngredient } from '@/hooks/useIngredients';
 import { allUnits, type Unit } from '@/constants/units';
-import { formatQuantity, parseQuantity } from '@/lib/formatQuantity';
+import { formatEditableQuantity, parseStockQuantity } from '@/lib/formatQuantity';
+import { errorMessage } from '@/lib/errorMessage';
 import { displayIngredientName, ingredientMatchesSearch } from '@/lib/ingredientNames';
 import { getIngredientEmoji } from '@/constants/emojis';
+import { useIngredientEmojiEditor } from '@/features/ingredients/IngredientEmojiSheet';
 import { linkIngredients, linkableIngredients } from '@/features/ingredients/link';
 import { isPresenceInStock, presenceQuantity, tracksPresence } from '@/features/pantry/presence';
-import { queryKeys } from '@/hooks/queryKeys';
+import { invalidateAfterPantryChange } from '@/hooks/invalidate';
 import type { Ingredient } from '@/types';
 
 export default function PantryItemDetailScreen() {
@@ -40,6 +42,7 @@ export default function PantryItemDetailScreen() {
   const { data: ingredients } = useIngredients();
   const update = useUpdatePantryItem();
   const updateIngredient = useUpdateIngredient();
+  const { editIngredientEmoji, ingredientEmojiSheet } = useIngredientEmojiEditor();
   const deleteItem = useDeletePantryItem();
 
   const [quantity, setQuantity] = useState('');
@@ -53,7 +56,8 @@ export default function PantryItemDetailScreen() {
   const [search, setSearch] = useState('');
   const [pendingAbsorb, setPendingAbsorb] = useState<Ingredient | null>(null);
   const [linking, setLinking] = useState(false);
-  const [error, setError] = useState<string | null>(null);
+  const [error, setError] = useState<{ title: string; message: string } | null>(null);
+  const [saving, setSaving] = useState(false);
 
   const ingredient = ingredients?.find((i) => i.id === item?.ingredientId);
 
@@ -69,7 +73,7 @@ export default function PantryItemDetailScreen() {
 
   useEffect(() => {
     if (!item) return;
-    setQuantity(formatQuantity(item.quantity));
+    setQuantity(formatEditableQuantity(item.quantity));
     setUnit(item.unit);
     setExpiresAt(item.expiresAt ?? null);
     setNotes(item.notes ?? '');
@@ -81,25 +85,36 @@ export default function PantryItemDetailScreen() {
     setTrackPresence(tracksPresence(ingredient));
   }, [ingredient?.id, ingredient?.trackPresence]);
 
+  const parsedQuantity = parseStockQuantity(quantity);
+  const quantityError =
+    !trackPresence && parsedQuantity === null ? 'Upiši količinu (0 ili više).' : undefined;
+
   const handleUpdate = async () => {
-    if (!item) return;
-    const nextQuantity = trackPresence ? presenceQuantity(inStock) : parseQuantity(quantity);
-    update.mutate({
-      ...item,
-      quantity: nextQuantity,
-      unit,
-      expiresAt: expiresAt || null,
-      notes: notes.trim() || null,
-      updatedAt: new Date().toISOString(),
-    });
-    if (ingredient && tracksPresence(ingredient) !== trackPresence) {
-      updateIngredient.mutate({
-        ...ingredient,
-        trackPresence,
+    if (!item || quantityError || saving) return;
+    const nextQuantity = trackPresence ? presenceQuantity(inStock) : parsedQuantity ?? 0;
+    setSaving(true);
+    try {
+      await update.mutateAsync({
+        ...item,
+        quantity: nextQuantity,
+        unit,
+        expiresAt: expiresAt || null,
+        notes: notes.trim() || null,
         updatedAt: new Date().toISOString(),
       });
+      if (ingredient && tracksPresence(ingredient) !== trackPresence) {
+        await updateIngredient.mutateAsync({
+          ...ingredient,
+          trackPresence,
+          updatedAt: new Date().toISOString(),
+        });
+      }
+      router.back();
+    } catch (err) {
+      setError({ title: 'Nije sačuvano', message: errorMessage(err) });
+    } finally {
+      setSaving(false);
     }
-    router.back();
   };
 
   const handleDelete = () => setConfirmDelete(true);
@@ -114,17 +129,10 @@ export default function PantryItemDetailScreen() {
     setLinking(true);
     try {
       await linkIngredients(pendingAbsorb.id, ingredient.id);
-      await Promise.all([
-        queryClient.invalidateQueries({ queryKey: queryKeys.pantryItems }),
-        queryClient.invalidateQueries({ queryKey: ['pantryItems', id] }),
-        queryClient.invalidateQueries({ queryKey: queryKeys.ingredients }),
-        queryClient.invalidateQueries({ queryKey: queryKeys.recipes }),
-        queryClient.invalidateQueries({ queryKey: queryKeys.missing }),
-        queryClient.invalidateQueries({ queryKey: queryKeys.shoppingLists }),
-      ]);
+      await invalidateAfterPantryChange(queryClient);
       setPendingAbsorb(null);
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'Povezivanje nije uspelo.');
+      setError({ title: 'Nije povezano', message: errorMessage(err) });
       setPendingAbsorb(null);
     } finally {
       setLinking(false);
@@ -148,7 +156,12 @@ export default function PantryItemDetailScreen() {
     return (
       <SafeAreaView style={styles.container} edges={['bottom']}>
         <Stack.Screen options={{ title: 'Namirnica' }} />
-        <EmptyState title="Sastojak nije pronađen" message="" />
+        <EmptyState
+          title="Namirnica nije pronađena"
+          message="Možda je obrisana na drugom uređaju."
+          actionTitle="Nazad"
+          onAction={() => router.back()}
+        />
       </SafeAreaView>
     );
   }
@@ -158,11 +171,19 @@ export default function PantryItemDetailScreen() {
       <Stack.Screen options={screenOptions} />
       <ScrollView contentContainerStyle={styles.content}>
         <View style={styles.hero}>
-          <EmojiBadge
-            emoji={getIngredientEmoji(name, ingredient?.category, ingredient?.emoji)}
-            size={112}
-            name={name}
-          />
+          <Pressable
+            onPress={() => ingredient && editIngredientEmoji(ingredient)}
+            disabled={!ingredient}
+            accessibilityRole="button"
+            accessibilityLabel={`Promeni ikonicu za ${name}`}
+          >
+            <EmojiBadge
+              emoji={getIngredientEmoji(name, ingredient?.category, ingredient?.emoji, ingredient?.emojiSource)}
+              size={112}
+              name={name}
+            />
+          </Pressable>
+          <Text style={styles.emojiHint}>Dodirni ikonicu da je promeniš</Text>
           <Text style={styles.title}>{name}</Text>
           {ingredient?.category ? (
             <Text style={styles.category}>{ingredient.category}</Text>
@@ -185,7 +206,8 @@ export default function PantryItemDetailScreen() {
                 label="Količina"
                 value={quantity}
                 onChangeText={setQuantity}
-                keyboardType="numeric"
+                keyboardType="decimal-pad"
+                error={quantityError}
               />
             </View>
             <View style={styles.half}>
@@ -216,11 +238,16 @@ export default function PantryItemDetailScreen() {
           multiline
         />
 
-        <Button title="Sačuvaj izmene" onPress={handleUpdate} />
+        <Button
+          title="Sačuvaj izmene"
+          onPress={handleUpdate}
+          loading={saving}
+          disabled={!!quantityError}
+        />
         {otherIngredients.length > 0 ? (
           <Button title="Poveži namirnice" onPress={() => setPickerOpen(true)} variant="secondary" />
         ) : null}
-        <Button title="Obriši sastojak" onPress={handleDelete} variant="danger" />
+        <Button title="Obriši namirnicu" onPress={handleDelete} variant="danger" />
       </ScrollView>
 
       <AppSheet
@@ -257,7 +284,7 @@ export default function PantryItemDetailScreen() {
               return (
                 <View key={other.id} style={styles.pickerRow}>
                   <ListRow
-                    emoji={getIngredientEmoji(otherName, other.category, other.emoji)}
+                    emoji={getIngredientEmoji(otherName, other.category, other.emoji, other.emojiSource)}
                     title={otherName}
                     subtitle={other.category}
                     onPress={() => {
@@ -272,6 +299,8 @@ export default function PantryItemDetailScreen() {
           </ScrollView>
         )}
       </AppSheet>
+
+      {ingredientEmojiSheet}
 
       <ConfirmSheet
         visible={pendingAbsorb !== null}
@@ -288,20 +317,29 @@ export default function PantryItemDetailScreen() {
       />
       <ConfirmSheet
         visible={confirmDelete}
-        title="Obriši sastojak"
-        message="Stavka nestaje sa zaliha. Ovo se ne može opozvati."
+        title="Obriši namirnicu"
+        message="Namirnica nestaje iz kuhinje. Ovo se ne može opozvati."
         confirmLabel="Obriši"
         variant="danger"
-        onConfirm={() => {
-          deleteItem.mutate(id, { onSuccess: () => router.back() });
-          setConfirmDelete(false);
-        }}
+        loading={deleteItem.isPending}
+        onConfirm={() =>
+          deleteItem.mutate(id, {
+            onSuccess: () => {
+              setConfirmDelete(false);
+              router.back();
+            },
+            onError: (err) => {
+              setConfirmDelete(false);
+              setError({ title: 'Nije obrisano', message: errorMessage(err) });
+            },
+          })
+        }
         onCancel={() => setConfirmDelete(false)}
       />
       <ConfirmSheet
         visible={error !== null}
-        title="Nije povezano"
-        message={error ?? ''}
+        title={error?.title ?? ''}
+        message={error?.message ?? ''}
         confirmLabel="U redu"
         variant="warning"
         hideCancel
@@ -326,6 +364,11 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     paddingVertical: spacing.lg,
     gap: spacing.md,
+  },
+  emojiHint: {
+    ...typography.caption,
+    color: colors.textMuted,
+    marginTop: -spacing.sm,
   },
   title: {
     ...typography.h1,

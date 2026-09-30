@@ -4,23 +4,31 @@ import { useRouter } from 'expo-router';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import Ionicons from '@expo/vector-icons/Ionicons';
 import { useQueryClient } from '@tanstack/react-query';
-import { colors, typography, spacing, borderRadius, shadows } from '@/constants/theme';
+import { colors, typography, spacing, layout } from '@/constants/theme';
 import { useMissingCalculation } from '@/hooks/useMissing';
-import { useMeals } from '@/hooks/useMealPlans';
+import { useMeals, useMealPlan } from '@/hooks/useMealPlans';
 import { useRecipes } from '@/hooks/useRecipes';
-import { useMealPlan } from '@/hooks/useMealPlans';
 import { useIngredients } from '@/hooks/useIngredients';
+import { useShoppingItems, useShoppingList } from '@/hooks/useShoppingList';
+import { invalidateAfterShoppingChange } from '@/hooks/invalidate';
+import { usePlanWeek } from '@/hooks/usePlanWeek';
 import { EmptyState } from '@/components/ui/EmptyState';
 import { emptyCta } from '@/components/ui/emptyCta';
 import { ListRow } from '@/components/ui/ListRow';
 import { ScreenHeader } from '@/components/ui/ScreenHeader';
+import { SegmentedControl } from '@/components/ui/SegmentedControl';
 import { AppSheet } from '@/components/ui/AppSheet';
+import { ConfirmSheet } from '@/components/ui/ConfirmSheet';
 import { Button } from '@/components/ui/Button';
+import { FabButton } from '@/components/ui/FabButton';
 import { formatAmount } from '@/lib/formatQuantity';
 import { displayIngredientName } from '@/lib/ingredientNames';
 import { getIngredientEmoji } from '@/constants/emojis';
+import { useIngredientEmojiEditor } from '@/features/ingredients/IngredientEmojiSheet';
+import type { Unit } from '@/constants/units';
+import type { Ingredient } from '@/types';
+import type { CalculationResult } from '@/calculations/engine';
 import { formatDayParts, weekScreenSubtitle } from '@/features/planner/service';
-import { usePlanWeek } from '@/hooks/usePlanWeek';
 import { groupMissingByDay } from '@/features/missing/groupByDay';
 import { partitionMissing } from '@/features/missing/partition';
 import {
@@ -35,11 +43,24 @@ import {
   toggleSelectionKeys,
   type SelectionHeaderState,
 } from '@/features/missing/selection';
-import { applyAddToShopping, previewAddToShopping } from '@/features/shopping/service';
+import {
+  applyAddToShopping,
+  previewAddToShopping,
+  shoppingMatchKey,
+} from '@/features/shopping/service';
 import type { ShoppingAddLine, ShoppingConflictMode } from '@/features/shopping/types';
-import { queryKeys } from '@/hooks/queryKeys';
 
 type ViewMode = 'by-day' | 'all-together';
+
+const VIEW_OPTIONS = [
+  { value: 'by-day', label: 'Po danima' },
+  { value: 'all-together', label: 'Sve zajedno' },
+] as const;
+
+const VIEW_HINTS: Record<ViewMode, string> = {
+  'by-day': 'Šta fali za svaki obrok. Zalihe prvo pokrivaju najranije dane.',
+  'all-together': 'Ukupno za celu nedelju, umanjeno za ono što imaš.',
+};
 
 function HeaderCheck({ state }: { state: SelectionHeaderState }) {
   const name = state === 'all' ? 'checkbox' : state === 'some' ? 'remove' : 'square-outline';
@@ -48,11 +69,13 @@ function HeaderCheck({ state }: { state: SelectionHeaderState }) {
 }
 
 export default function MissingScreen() {
+  const { editIngredientEmoji, ingredientEmojiSheet } = useIngredientEmojiEditor();
   const router = useRouter();
   const queryClient = useQueryClient();
   const [viewMode, setViewMode] = useState<ViewMode>('by-day');
   const [selected, setSelected] = useState<Set<string>>(new Set());
   const [adding, setAdding] = useState(false);
+  const [addError, setAddError] = useState<string | null>(null);
   const [conflictVisible, setConflictVisible] = useState(false);
   const [pendingAdd, setPendingAdd] = useState<{ listId: string; lines: ShoppingAddLine[] } | null>(
     null
@@ -64,13 +87,27 @@ export default function MissingScreen() {
   const { data: recipes } = useRecipes();
   const { data: ingredients } = useIngredients();
   const { data: calculation, isLoading } = useMissingCalculation(weekStart);
+  const { data: shoppingList } = useShoppingList(weekStart);
+  const { data: shoppingItems } = useShoppingItems(shoppingList?.id);
 
   const ingredientMap = useMemo(
     () => new Map(ingredients?.map((i) => [i.id, i]) ?? []),
     [ingredients]
   );
 
-  const missingItems = calculation?.missing ?? [];
+  const onShoppingList = useMemo(
+    () =>
+      new Set(
+        (shoppingItems ?? []).flatMap((item) =>
+          item.ingredientId ? [shoppingMatchKey(item.ingredientId, item.unit)] : []
+        )
+      ),
+    [shoppingItems]
+  );
+  const isOnList = (ingredientId: string, unit: Unit) =>
+    onShoppingList.has(shoppingMatchKey(ingredientId, unit));
+
+  const missingItems = useMemo(() => calculation?.missing ?? [], [calculation]);
   const { presence: presenceMissing, counted: countedMissing } = useMemo(
     () => partitionMissing(missingItems),
     [missingItems]
@@ -82,6 +119,7 @@ export default function MissingScreen() {
   );
 
   const selectedCount = selected.size;
+  const toggle = (key: string) => setSelected((current) => toggleSelectionKey(current, key));
 
   useEffect(() => {
     setSelected(new Set());
@@ -92,12 +130,17 @@ export default function MissingScreen() {
     setSelected(new Set());
   };
 
-  const finishAdded = async (listId: string) => {
+  const finishAdded = async () => {
     setSelected(new Set());
     setConflictVisible(false);
     setPendingAdd(null);
-    await queryClient.invalidateQueries({ queryKey: queryKeys.shoppingLists });
-    await queryClient.invalidateQueries({ queryKey: queryKeys.shoppingItems(listId) });
+    await invalidateAfterShoppingChange(queryClient);
+  };
+
+  const failAdd = (err: unknown) => {
+    setConflictVisible(false);
+    setPendingAdd(null);
+    setAddError(err instanceof Error ? err.message : 'Pokušaj ponovo.');
   };
 
   const collectLines = () => {
@@ -117,11 +160,13 @@ export default function MissingScreen() {
       const preview = await previewAddToShopping(weekStart, lines);
       if (preview.conflicts.length === 0) {
         await applyAddToShopping(preview.list.id, lines, 'merge');
-        await finishAdded(preview.list.id);
+        await finishAdded();
         return;
       }
       setPendingAdd({ listId: preview.list.id, lines });
       setConflictVisible(true);
+    } catch (err) {
+      failAdd(err);
     } finally {
       setAdding(false);
     }
@@ -132,48 +177,66 @@ export default function MissingScreen() {
     setAdding(true);
     try {
       await applyAddToShopping(pendingAdd.listId, pendingAdd.lines, mode);
-      await finishAdded(pendingAdd.listId);
+      await finishAdded();
+    } catch (err) {
+      failAdd(err);
     } finally {
       setAdding(false);
     }
   };
 
+  const header = (
+    <>
+      <ScreenHeader title="Fali" subtitle={weekScreenSubtitle(weekStart)} />
+      <View style={styles.viewToggle}>
+        <SegmentedControl options={VIEW_OPTIONS} value={viewMode} onChange={changeViewMode} />
+        <Text style={styles.viewHint}>{VIEW_HINTS[viewMode]}</Text>
+      </View>
+    </>
+  );
+
   if (isLoading) {
     return (
       <SafeAreaView style={styles.container} edges={['top']}>
-        <ScreenHeader title="Fali" subtitle={weekScreenSubtitle(weekStart)} />
+        {header}
         <Text style={styles.loading}>Učitavanje...</Text>
       </SafeAreaView>
     );
   }
 
+  const presenceSection =
+    presenceMissing.length === 0 ? null : (
+      <View>
+        <Text style={styles.presenceHeader}>Nemaš</Text>
+        {presenceMissing.map((item) => (
+          <MissingRow
+            key={item.key}
+            item={item}
+            ingredient={ingredientMap.get(item.ingredientId)}
+            subtitle={isOnList(item.ingredientId, item.missingUnit) ? 'Nemaš · već na listi' : 'Nemaš'}
+            trailing={
+              item.requiredQuantity > 0 ? formatAmount(item.missingQuantity, item.missingUnit) : undefined
+            }
+            emptyStock
+            checked={selected.has(allTogetherItemKey(item.key))}
+            onToggle={() => toggle(allTogetherItemKey(item.key))}
+            onEmojiPress={() => {
+              const ingredient = ingredientMap.get(item.ingredientId);
+              if (ingredient) editIngredientEmoji(ingredient);
+            }}
+          />
+        ))}
+      </View>
+    );
+
   return (
     <SafeAreaView style={styles.container} edges={['top']}>
-      <ScreenHeader title="Fali" subtitle={weekScreenSubtitle(weekStart)} />
-
-      <View style={styles.toggleRow}>
-        <Pressable
-          onPress={() => changeViewMode('by-day')}
-          style={[styles.toggle, viewMode === 'by-day' && styles.toggleActive]}
-        >
-          <Text style={[styles.toggleText, viewMode === 'by-day' && styles.toggleTextActive]}>
-            Po danima
-          </Text>
-        </Pressable>
-        <Pressable
-          onPress={() => changeViewMode('all-together')}
-          style={[styles.toggle, viewMode === 'all-together' && styles.toggleActive]}
-        >
-          <Text style={[styles.toggleText, viewMode === 'all-together' && styles.toggleTextActive]}>
-            Sve zajedno
-          </Text>
-        </Pressable>
-      </View>
+      {header}
 
       {missingItems.length === 0 ? (
         <EmptyState
           title="Imaš sve što ti treba"
-          message="Dodaj obroke da vidiš šta fali."
+          message="Kad dodaš obroke u plan, ovde vidiš šta treba kupiti."
           icon="checkmark-circle-outline"
           actionTitle={emptyCta.missing.title}
           onAction={() => router.push(emptyCta.missing.href)}
@@ -181,133 +244,63 @@ export default function MissingScreen() {
       ) : viewMode === 'all-together' ? (
         <FlatList
           data={countedMissing}
-          keyExtractor={(item) => item.ingredientId}
+          keyExtractor={(item) => item.key}
           contentContainerStyle={[styles.list, selectedCount > 0 && styles.listWithBar]}
-          ListHeaderComponent={
-            presenceMissing.length === 0 ? null : (
-              <View>
-                <Text style={styles.presenceHeader}>Nemaš</Text>
-                {presenceMissing.map((item) => {
-                  const ingredient = ingredientMap.get(item.ingredientId);
-                  const name = displayIngredientName(ingredient?.name ?? item.ingredientName);
-                  const key = allTogetherItemKey(item.ingredientId);
-                  const checked = selected.has(key);
-                  return (
-                    <ListRow
-                      key={item.ingredientId}
-                      emoji={getIngredientEmoji(
-                        name,
-                        ingredient?.category ?? item.category,
-                        ingredient?.emoji
-                      )}
-                      title={name}
-                      subtitle="Nemaš"
-                      trailing={
-                        item.requiredQuantity > 0
-                          ? formatAmount(item.missingQuantity, item.missingUnit)
-                          : undefined
-                      }
-                      trailingColor={colors.danger}
-                      emptyStock
-                      showCheck
-                      checked={checked}
-                      onToggleCheck={() => setSelected((current) => toggleSelectionKey(current, key))}
-                      onPress={() => setSelected((current) => toggleSelectionKey(current, key))}
-                    />
-                  );
-                })}
-              </View>
-            )
-          }
+          ListHeaderComponent={presenceSection}
           ItemSeparatorComponent={() => <View style={styles.separator} />}
-          renderItem={({ item }) => {
-            const ingredient = ingredientMap.get(item.ingredientId);
-            const name = displayIngredientName(ingredient?.name ?? item.ingredientName);
-            const key = allTogetherItemKey(item.ingredientId);
-            const checked = selected.has(key);
-            return (
-              <ListRow
-                emoji={getIngredientEmoji(name, ingredient?.category ?? item.category, ingredient?.emoji)}
-                title={name}
-                subtitle={`Imaš ${formatAmount(item.availableQuantity, item.availableUnit)}`}
-                trailing={formatAmount(item.missingQuantity, item.missingUnit)}
-                trailingColor={colors.danger}
-                showCheck
-                checked={checked}
-                onToggleCheck={() => setSelected((current) => toggleSelectionKey(current, key))}
-                onPress={() => setSelected((current) => toggleSelectionKey(current, key))}
-              />
-            );
-          }}
+          renderItem={({ item }) => (
+            <MissingRow
+              item={item}
+              ingredient={ingredientMap.get(item.ingredientId)}
+              subtitle={
+                `Imaš ${formatAmount(item.availableQuantity, item.availableUnit)}` +
+                (isOnList(item.ingredientId, item.missingUnit) ? ' · već na listi' : '')
+              }
+              trailing={formatAmount(item.missingQuantity, item.missingUnit)}
+              checked={selected.has(allTogetherItemKey(item.key))}
+              onToggle={() => toggle(allTogetherItemKey(item.key))}
+              onEmojiPress={() => {
+                const ingredient = ingredientMap.get(item.ingredientId);
+                if (ingredient) editIngredientEmoji(ingredient);
+              }}
+            />
+          )}
         />
       ) : (
         <FlatList
           data={byDay}
           keyExtractor={(group) => group.date}
           contentContainerStyle={[styles.list, selectedCount > 0 && styles.listWithBar]}
-          ListHeaderComponent={
-            presenceMissing.length === 0 ? null : (
-              <View>
-                <Text style={styles.presenceHeader}>Nemaš</Text>
-                {presenceMissing.map((item) => {
-                  const ingredient = ingredientMap.get(item.ingredientId);
-                  const name = displayIngredientName(ingredient?.name ?? item.ingredientName);
-                  const key = allTogetherItemKey(item.ingredientId);
-                  const checked = selected.has(key);
-                  return (
-                    <ListRow
-                      key={item.ingredientId}
-                      emoji={getIngredientEmoji(
-                        name,
-                        ingredient?.category ?? item.category,
-                        ingredient?.emoji
-                      )}
-                      title={name}
-                      subtitle="Nemaš"
-                      trailing={
-                        item.requiredQuantity > 0
-                          ? formatAmount(item.missingQuantity, item.missingUnit)
-                          : undefined
-                      }
-                      trailingColor={colors.danger}
-                      emptyStock
-                      showCheck
-                      checked={checked}
-                      onToggleCheck={() => setSelected((current) => toggleSelectionKey(current, key))}
-                      onPress={() => setSelected((current) => toggleSelectionKey(current, key))}
-                    />
-                  );
-                })}
-              </View>
-            )
-          }
+          ListHeaderComponent={presenceSection}
           renderItem={({ item: group }) => {
             const parts = formatDayParts(group.date);
             const dayKeys = keysForDay(group);
-            const dayState = selectionHeaderState(selected, dayKeys);
             return (
               <View>
                 <Pressable
                   onPress={() => setSelected((current) => toggleSelectionKeys(current, dayKeys))}
+                  accessibilityRole="checkbox"
+                  accessibilityLabel={`Izaberi sve za ${parts.day} ${parts.date}`}
                   style={({ pressed }) => [styles.groupHeader, pressed && styles.headerPressed]}
                 >
-                  <HeaderCheck state={dayState} />
+                  <HeaderCheck state={selectionHeaderState(selected, dayKeys)} />
                   <Text style={styles.dayHeader}>
                     {parts.day} {parts.date}
                   </Text>
                 </Pressable>
                 {group.recipes.map((recipeGroup) => {
                   const recipeKeys = keysForRecipe(group.date, recipeGroup);
-                  const recipeState = selectionHeaderState(selected, recipeKeys);
                   return (
                     <View key={recipeGroup.recipeId}>
                       <Pressable
                         onPress={() =>
                           setSelected((current) => toggleSelectionKeys(current, recipeKeys))
                         }
+                        accessibilityRole="checkbox"
+                        accessibilityLabel={`Izaberi sve za ${recipeGroup.recipeName}`}
                         style={({ pressed }) => [styles.groupHeader, pressed && styles.headerPressed]}
                       >
-                        <HeaderCheck state={recipeState} />
+                        <HeaderCheck state={selectionHeaderState(selected, recipeKeys)} />
                         <Text style={styles.mealHeader}>
                           {recipeGroup.mealCount > 1
                             ? `${recipeGroup.recipeName} ×${recipeGroup.mealCount}`
@@ -315,29 +308,20 @@ export default function MissingScreen() {
                         </Text>
                       </Pressable>
                       {recipeGroup.items.map((item) => {
-                        const ingredient = ingredientMap.get(item.ingredientId);
-                        const name = displayIngredientName(ingredient?.name ?? item.ingredientName);
-                        const key = byDayItemKey(group.date, recipeGroup.recipeId, item.ingredientId);
-                        const checked = selected.has(key);
+                        const key = byDayItemKey(group.date, recipeGroup.recipeId, item.key);
                         return (
-                          <ListRow
+                          <MissingRow
                             key={key}
-                            emoji={getIngredientEmoji(
-                              name,
-                              ingredient?.category ?? item.category,
-                              ingredient?.emoji
-                            )}
-                            title={name}
+                            item={item}
+                            ingredient={ingredientMap.get(item.ingredientId)}
+                            subtitle={isOnList(item.ingredientId, item.unit) ? 'Već na listi' : undefined}
                             trailing={formatAmount(item.quantity, item.unit)}
-                            trailingColor={colors.danger}
-                            showCheck
-                            checked={checked}
-                            onToggleCheck={() =>
-                              setSelected((current) => toggleSelectionKey(current, key))
-                            }
-                            onPress={() =>
-                              setSelected((current) => toggleSelectionKey(current, key))
-                            }
+                            checked={selected.has(key)}
+                            onToggle={() => toggle(key)}
+                            onEmojiPress={() => {
+                              const ingredient = ingredientMap.get(item.ingredientId);
+                              if (ingredient) editIngredientEmoji(ingredient);
+                            }}
                           />
                         );
                       })}
@@ -351,17 +335,11 @@ export default function MissingScreen() {
       )}
 
       {selectedCount > 0 ? (
-        <View style={styles.barWrap} pointerEvents="box-none">
-          <Pressable
-            onPress={handleAddToShopping}
-            disabled={adding}
-            style={({ pressed }) => [styles.bar, (pressed || adding) && styles.barPressed]}
-          >
-            <Text style={styles.barText}>
-              {adding ? 'Učitavanje...' : `Dodaj na kupovinu (${selectedCount})`}
-            </Text>
-          </Pressable>
-        </View>
+        <FabButton
+          title={`Dodaj na kupovinu (${selectedCount})`}
+          onPress={handleAddToShopping}
+          loading={adding}
+        />
       ) : null}
 
       <AppSheet
@@ -390,7 +368,62 @@ export default function MissingScreen() {
           </View>
         }
       />
+
+      {ingredientEmojiSheet}
+
+      <ConfirmSheet
+        visible={addError !== null}
+        title="Nije dodato na kupovinu"
+        message={addError ?? ''}
+        confirmLabel="U redu"
+        variant="warning"
+        hideCancel
+        onConfirm={() => setAddError(null)}
+        onCancel={() => setAddError(null)}
+      />
     </SafeAreaView>
+  );
+}
+
+function MissingRow({
+  item,
+  ingredient,
+  subtitle,
+  trailing,
+  emptyStock,
+  checked,
+  onToggle,
+  onEmojiPress,
+}: {
+  item: Pick<CalculationResult, 'ingredientName' | 'category'>;
+  ingredient: Ingredient | undefined;
+  subtitle?: string;
+  trailing?: string;
+  emptyStock?: boolean;
+  checked: boolean;
+  onToggle: () => void;
+  onEmojiPress?: () => void;
+}) {
+  const name = displayIngredientName(ingredient?.name ?? item.ingredientName);
+  return (
+    <ListRow
+      emoji={getIngredientEmoji(
+        name,
+        ingredient?.category ?? item.category,
+        ingredient?.emoji,
+        ingredient?.emojiSource
+      )}
+      title={name}
+      subtitle={subtitle}
+      trailing={trailing}
+      trailingColor={colors.danger}
+      emptyStock={emptyStock}
+      showCheck
+      checked={checked}
+      onToggleCheck={onToggle}
+      onPress={onToggle}
+      onEmojiPress={onEmojiPress}
+    />
   );
 }
 
@@ -404,43 +437,25 @@ const styles = StyleSheet.create({
     color: colors.textSecondary,
     paddingHorizontal: spacing.lg,
   },
-  toggleRow: {
-    flexDirection: 'row',
+  viewToggle: {
     paddingHorizontal: spacing.lg,
     marginBottom: spacing.md,
     gap: spacing.sm,
   },
-  toggle: {
-    flex: 1,
-    paddingVertical: spacing.sm,
-    paddingHorizontal: spacing.md,
-    backgroundColor: colors.surface,
-    borderRadius: borderRadius.full,
-    borderWidth: 1,
-    borderColor: colors.border,
-    alignItems: 'center',
-  },
-  toggleActive: {
-    backgroundColor: colors.primary,
-    borderColor: colors.primary,
-  },
-  toggleText: {
-    ...typography.bodySmall,
-    color: colors.text,
-  },
-  toggleTextActive: {
-    color: colors.onPrimary,
+  viewHint: {
+    ...typography.caption,
+    color: colors.textSecondary,
   },
   list: {
     paddingBottom: spacing.xxxl,
   },
   listWithBar: {
-    paddingBottom: 96,
+    paddingBottom: layout.fabClearance,
   },
   separator: {
-    height: 1,
+    height: StyleSheet.hairlineWidth,
     backgroundColor: colors.border,
-    marginLeft: 72,
+    marginLeft: layout.listInset,
   },
   groupHeader: {
     flexDirection: 'row',
@@ -473,27 +488,6 @@ const styles = StyleSheet.create({
     paddingTop: spacing.md,
     paddingBottom: spacing.sm,
     fontWeight: '700',
-  },
-  barWrap: {
-    position: 'absolute',
-    left: spacing.lg,
-    right: spacing.lg,
-    bottom: spacing.lg,
-  },
-  bar: {
-    backgroundColor: colors.primary,
-    borderRadius: 28,
-    minHeight: 52,
-    alignItems: 'center',
-    justifyContent: 'center',
-    ...shadows.lg,
-  },
-  barPressed: {
-    opacity: 0.85,
-  },
-  barText: {
-    ...typography.button,
-    color: colors.onPrimary,
   },
   conflictActions: {
     gap: spacing.sm,

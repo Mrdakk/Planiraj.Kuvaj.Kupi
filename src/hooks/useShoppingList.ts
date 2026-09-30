@@ -1,5 +1,6 @@
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { queryKeys } from './queryKeys';
+import { invalidateAfterShoppingChange } from './invalidate';
 import { shoppingListRepository, shoppingItemRepository } from '@/services/repositories';
 import type { ShoppingItem, ShoppingList } from '@/types';
 
@@ -29,37 +30,12 @@ export function useShoppingItem(id: string) {
   });
 }
 
-export function useCreateShoppingList() {
-  const queryClient = useQueryClient();
-
-  return useMutation({
-    mutationFn: (list: ShoppingList) => shoppingListRepository.insert(list),
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: queryKeys.shoppingLists });
-    },
-  });
-}
-
-export function useCreateShoppingItem() {
-  const queryClient = useQueryClient();
-
-  return useMutation({
-    mutationFn: (item: ShoppingItem) => shoppingItemRepository.insert(item),
-    onSuccess: (_, item) => {
-      queryClient.invalidateQueries({ queryKey: queryKeys.shoppingItems(item.shoppingListId) });
-    },
-  });
-}
-
 export function useUpdateShoppingItem() {
   const queryClient = useQueryClient();
 
   return useMutation({
     mutationFn: (item: ShoppingItem) => shoppingItemRepository.update(item),
-    onSuccess: (_, item) => {
-      queryClient.invalidateQueries({ queryKey: queryKeys.shoppingItems(item.shoppingListId) });
-      queryClient.invalidateQueries({ queryKey: queryKeys.shoppingItem(item.id) });
-    },
+    onSuccess: () => invalidateAfterShoppingChange(queryClient),
   });
 }
 
@@ -68,9 +44,6 @@ export function useDeleteShoppingItem() {
 
   return useMutation({
     mutationFn: (item: ShoppingItem) => shoppingItemRepository.delete(item.id),
-    onSuccess: (_, item) => {
-      queryClient.invalidateQueries({ queryKey: queryKeys.shoppingItems(item.shoppingListId) });
-      queryClient.invalidateQueries({ queryKey: queryKeys.shoppingItem(item.id) });
-    },
+    onSuccess: () => invalidateAfterShoppingChange(queryClient),
   });
 }

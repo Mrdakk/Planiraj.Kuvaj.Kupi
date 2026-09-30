@@ -9,16 +9,18 @@ import { Button } from '@/components/ui/Button';
 import { DateField } from '@/components/ui/DateField';
 import { Input } from '@/components/ui/Input';
 import { ToggleRow } from '@/components/ui/ToggleRow';
-import { addPantryItem } from '@/features/pantry/service';
+import { addPantryItem, DuplicateKitchenItemError } from '@/features/pantry/service';
+import { errorMessage } from '@/lib/errorMessage';
 import { ConfirmSheet } from '@/components/ui/ConfirmSheet';
-import { allUnits, type Unit } from '@/constants/units';
-import { parseQuantity } from '@/lib/formatQuantity';
+import type { Unit } from '@/constants/units';
+import { UnitPicker } from '@/components/ui/UnitPicker';
+import { parseStockQuantity } from '@/lib/formatQuantity';
 import {
   ingredientCategories,
   isIngredientCategory,
   type IngredientCategory,
 } from '@/constants/categories';
-import { queryKeys } from '@/hooks/queryKeys';
+import { invalidateAfterPantryChange } from '@/hooks/invalidate';
 
 function categoryFromParam(value: string | string[] | undefined): IngredientCategory {
   const raw = Array.isArray(value) ? value[0] : value;
@@ -40,20 +42,26 @@ export default function CreatePantryItemScreen() {
   const [trackPresence, setTrackPresence] = useState(false);
   const [inStock, setInStock] = useState(true);
   const [loading, setLoading] = useState(false);
-  const [error, setError] = useState<string | null>(null);
+  const [error, setError] = useState<unknown>(null);
 
   useEffect(() => {
     setCategory(categoryFromParam(params.category));
   }, [params.category]);
 
+  const parsedQuantity = parseStockQuantity(quantity);
+  const quantityError =
+    !trackPresence && quantity.trim() && parsedQuantity === null
+      ? 'Upiši količinu (0 ili više).'
+      : undefined;
+  const canSubmit = !!name.trim() && (trackPresence || parsedQuantity !== null) && !loading;
+
   const handleSubmit = async () => {
-    if (!name.trim()) return;
-    if (!trackPresence && !quantity.trim()) return;
+    if (!canSubmit) return;
     setLoading(true);
     try {
       await addPantryItem({
         rawName: name.trim(),
-        quantity: trackPresence ? 1 : parseQuantity(quantity),
+        quantity: trackPresence ? 1 : parsedQuantity ?? 0,
         unit,
         category,
         expiresAt: expiresAt || undefined,
@@ -61,12 +69,10 @@ export default function CreatePantryItemScreen() {
         trackPresence,
         inStock,
       });
-      await queryClient.invalidateQueries({ queryKey: queryKeys.pantryItems });
-      await queryClient.invalidateQueries({ queryKey: queryKeys.ingredients });
-      await queryClient.invalidateQueries({ queryKey: queryKeys.missing });
+      await invalidateAfterPantryChange(queryClient);
       router.back();
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'Namirnica nije sačuvana.');
+      setError(err);
     } finally {
       setLoading(false);
     }
@@ -114,18 +120,12 @@ export default function CreatePantryItemScreen() {
                 value={quantity}
                 onChangeText={setQuantity}
                 placeholder="npr. 800"
-                keyboardType="numeric"
+                keyboardType="decimal-pad"
+                error={quantityError}
               />
             </View>
             <View style={styles.half}>
-              <Text style={styles.label}>Jedinica</Text>
-              <View style={styles.pickerContainer}>
-                <Picker dropdownIconColor={colors.text} style={{ color: colors.text }} selectedValue={unit} onValueChange={(value) => setUnit(value as Unit)}>
-                  {allUnits.map((u) => (
-                    <Picker.Item color={colors.text} key={u} label={u} value={u} />
-                  ))}
-                </Picker>
-              </View>
+              <UnitPicker value={unit} onChange={setUnit} />
             </View>
           </View>
         )}
@@ -150,13 +150,13 @@ export default function CreatePantryItemScreen() {
           title="Sačuvaj"
           onPress={handleSubmit}
           loading={loading}
-          disabled={!name.trim() || (!trackPresence && !quantity.trim())}
+          disabled={!canSubmit}
         />
       </ScrollView>
       <ConfirmSheet
         visible={error !== null}
-        title="Već postoji"
-        message={error ?? ''}
+        title={error instanceof DuplicateKitchenItemError ? 'Već postoji' : 'Nije sačuvano'}
+        message={error !== null ? errorMessage(error, 'Namirnica nije sačuvana.') : ''}
         confirmLabel="U redu"
         variant="warning"
         hideCancel

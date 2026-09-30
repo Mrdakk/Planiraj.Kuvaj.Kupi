@@ -1,6 +1,7 @@
 import { supabase, requireSupabase } from '@/lib/supabase';
 import {
   getPendingSyncQueue,
+  getAllSyncQueue,
   removeSyncQueueItem,
   incrementSyncQueueRetry,
   updateSyncState,
@@ -8,11 +9,12 @@ import {
   getDatabase,
   nowISO,
 } from '@/database/repository';
-import type { SQLiteDatabase, SQLiteSyncQueueRow, SyncStatus } from '@/database/types';
+import type { SQLiteDatabase, SQLiteSyncQueueRow } from '@/database/types';
 import type { TableName } from '@/database/repository';
 import { getHouseholdState } from '@/features/household/state';
 import { useAppStore } from '@/store/appStore';
 import { toServerPayload } from './payload';
+import { queueHealth, shouldApplyServerRow, staleLocalIds, type LocalRowState } from './reconcile';
 
 export interface SyncEngine {
   sync(): Promise<void>;
@@ -20,14 +22,29 @@ export interface SyncEngine {
   pull(): Promise<void>;
 }
 
+/** Parents before children, so foreign keys hold while inserting. */
+const PULL_ORDER: TableName[] = [
+  'ingredients',
+  'ingredient_aliases',
+  'recipes',
+  'recipe_ingredients',
+  'meal_plans',
+  'meals',
+  'pantry_items',
+  'shopping_lists',
+  'shopping_items',
+  'consumption_logs',
+  'favorites',
+];
+
+const PAGE_SIZE = 1000;
+
 export function createSyncEngine(): SyncEngine {
   async function push(): Promise<void> {
     if (!supabase) return;
     const household = await getHouseholdState();
     if (!household) return;
     const queue = await getPendingSyncQueue();
-    if (queue.length === 0) return;
-
     for (const item of queue) {
       await pushQueueItem(item, household.householdId);
     }
@@ -37,17 +54,17 @@ export function createSyncEngine(): SyncEngine {
     if (!supabase) return;
     const household = await getHouseholdState();
     if (!household) return;
-    await pullTable('ingredients');
-    await pullTable('ingredient_aliases');
-    await pullTable('recipes');
-    await pullTable('recipe_ingredients');
-    await pullTable('meal_plans');
-    await pullTable('meals');
-    await pullTable('pantry_items');
-    await pullTable('shopping_lists');
-    await pullTable('shopping_items');
-    await pullTable('consumption_logs');
-    await pullTable('favorites');
+
+    const serverIdsByTable = new Map<TableName, Set<string>>();
+    for (const tableName of PULL_ORDER) {
+      const ids = await pullTable(tableName);
+      if (ids) serverIdsByTable.set(tableName, ids);
+    }
+    // Children first, so a removed recipe does not block on its ingredient rows.
+    for (const tableName of [...PULL_ORDER].reverse()) {
+      const ids = serverIdsByTable.get(tableName);
+      if (ids) await purgeDeletedRows(tableName, ids);
+    }
   }
 
   async function sync(): Promise<void> {
@@ -71,8 +88,14 @@ export function createSyncEngine(): SyncEngine {
       await pull();
       await push();
 
-      await updateSyncState({ status: 'idle', last_synced_at: nowISO() });
-      useAppStore.getState().setSyncStatus('synced');
+      const remaining = await getAllSyncQueue();
+      const health = queueHealth(remaining);
+      await updateSyncState({
+        status: health === 'error' ? 'error' : 'idle',
+        pending_count: remaining.length,
+        ...(health === 'synced' ? { last_synced_at: nowISO() } : {}),
+      });
+      useAppStore.getState().setSyncStatus(health);
     } catch (error) {
       const message = error instanceof Error ? error.message : String(error);
       await updateSyncState({ status: 'error' });
@@ -85,124 +108,106 @@ export function createSyncEngine(): SyncEngine {
   return { sync, push, pull };
 }
 
+function throwIfError(error: { message: string } | null): void {
+  if (error) throw new Error(error.message);
+}
+
 async function pushQueueItem(item: SQLiteSyncQueueRow, householdId: string): Promise<void> {
   const client = requireSupabase();
+  const table = item.table_name as TableName;
   const payload = JSON.parse(item.payload) as Record<string, unknown>;
 
   try {
     if (item.operation === 'DELETE') {
-      await client.from(item.table_name).delete().eq('id', item.record_id);
-    } else if (item.operation === 'INSERT') {
-      const serverPayload = toServerPayload(item.table_name as TableName, payload, householdId);
-      await client.from(item.table_name).upsert(serverPayload, { onConflict: 'id' });
-    } else {
-      const { data: serverRow } = await client
-        .from(item.table_name)
+      const { error } = await client.from(table).delete().eq('id', item.record_id);
+      throwIfError(error);
+      await removeSyncQueueItem(item.id);
+      return;
+    }
+
+    const serverPayload = toServerPayload(table, payload, householdId);
+
+    if (item.operation === 'UPDATE') {
+      const { data: serverRow, error } = await client
+        .from(table)
         .select('*')
         .eq('id', item.record_id)
-        .single();
+        .maybeSingle();
+      throwIfError(error);
 
-      const serverPayload = toServerPayload(item.table_name as TableName, payload, householdId);
-
-      if (serverRow) {
-        const conflict = resolveConflictForQueue(item, serverPayload, serverRow as Record<string, unknown>);
-        if (conflict.resolution === 'server_wins') {
-          await removeSyncQueueItem(item.id);
-          await markLocalSynced(item.table_name as TableName, item.record_id);
-          return;
-        }
-        await client.from(item.table_name).upsert(conflict.payload, { onConflict: 'id' });
-      } else {
-        await client.from(item.table_name).upsert(serverPayload, { onConflict: 'id' });
+      const server = serverRow as Record<string, unknown> | null;
+      if (server && String(server.updated_at) > String(serverPayload.updated_at)) {
+        await withTransaction((db) => upsertLocalRow(db, table, server));
+        await removeSyncQueueItem(item.id);
+        return;
       }
     }
 
+    const { error } = await client.from(table).upsert(serverPayload, { onConflict: 'id' });
+    throwIfError(error);
     await removeSyncQueueItem(item.id);
-    await markLocalSynced(item.table_name as TableName, item.record_id);
+    await markLocalSynced(table, item.record_id);
   } catch (error) {
     const message = error instanceof Error ? error.message : String(error);
     await incrementSyncQueueRetry(item.id, message);
   }
 }
 
-interface ConflictResult {
-  payload: Record<string, unknown>;
-  resolution: 'server_wins' | 'local_wins' | 'delta_merged';
-}
-
-function resolveConflictForQueue(
-  item: SQLiteSyncQueueRow,
-  localPayload: Record<string, unknown>,
-  serverRow: Record<string, unknown>
-): ConflictResult {
-  if (item.table_name !== 'pantry_items') {
-    const localUpdatedAt = String(localPayload.updated_at);
-    const serverUpdatedAt = String(serverRow.updated_at);
-    if (serverUpdatedAt > localUpdatedAt) {
-      return { payload: serverRow, resolution: 'server_wins' };
-    }
-    return { payload: localPayload, resolution: 'local_wins' };
-  }
-
-  const previousQuantity = Number(localPayload.previousQuantity ?? NaN);
-  if (!Number.isNaN(previousQuantity) && localPayload.unit === serverRow.unit) {
-    const localQuantity = Number(localPayload.quantity);
-    const serverQuantity = Number(serverRow.quantity);
-    const delta = localQuantity - previousQuantity;
-    const mergedQuantity = Math.max(0, serverQuantity + delta);
-    return {
-      payload: { ...localPayload, quantity: mergedQuantity },
-      resolution: 'delta_merged',
-    };
-  }
-
-  const localUpdatedAt = String(localPayload.updated_at);
-  const serverUpdatedAt = String(serverRow.updated_at);
-  if (serverUpdatedAt > localUpdatedAt) {
-    return { payload: serverRow, resolution: 'server_wins' };
-  }
-  return { payload: localPayload, resolution: 'local_wins' };
-}
-
 async function markLocalSynced(tableName: TableName, recordId: string): Promise<void> {
   const db = await getDatabase();
-  await db.runAsync(
-    `UPDATE ${tableName} SET sync_status = ? WHERE id = ?`,
-    ['synced', recordId]
-  );
+  await db.runAsync(`UPDATE ${tableName} SET sync_status = ? WHERE id = ?`, ['synced', recordId]);
 }
 
-async function pullTable(tableName: TableName): Promise<void> {
-  const { data: rows, error } = await requireSupabase().from(tableName).select('*');
-  if (error || !rows) {
-    console.warn(`Pull failed for ${tableName}:`, error?.message);
-    return;
+async function fetchAllRows(tableName: TableName): Promise<Record<string, unknown>[] | null> {
+  const rows: Record<string, unknown>[] = [];
+  for (let from = 0; ; from += PAGE_SIZE) {
+    const { data, error } = await requireSupabase()
+      .from(tableName)
+      .select('*')
+      .order('id')
+      .range(from, from + PAGE_SIZE - 1);
+    if (error || !data) {
+      console.warn(`Pull failed for ${tableName}:`, error?.message);
+      return null;
+    }
+    rows.push(...(data as Record<string, unknown>[]));
+    if (data.length < PAGE_SIZE) return rows;
   }
+}
+
+/** Returns the ids present on the server, or null when the table could not be read. */
+async function pullTable(tableName: TableName): Promise<Set<string> | null> {
+  const rows = await fetchAllRows(tableName);
+  if (!rows) return null;
 
   await withTransaction(async (db) => {
-    for (const serverRow of rows as Record<string, unknown>[]) {
-      const localRow = await db.getFirstAsync<Record<string, unknown>>(
-        `SELECT * FROM ${tableName} WHERE id = ?`,
+    for (const serverRow of rows) {
+      const localRow = await db.getFirstAsync<LocalRowState>(
+        `SELECT id, sync_status, updated_at FROM ${tableName} WHERE id = ?`,
         [serverRow.id as string]
       );
-
-      if (localRow) {
-        const localSyncStatus = String(localRow.sync_status) as SyncStatus;
-        const localUpdatedAt = String(localRow.updated_at);
-        const serverUpdatedAt = String(serverRow.updated_at);
-
-        if (localSyncStatus === 'pending' && serverUpdatedAt > localUpdatedAt) {
-          if (tableName !== 'pantry_items') {
-            await upsertLocalRow(db, tableName, serverRow);
-          }
-        } else if (serverUpdatedAt > localUpdatedAt) {
-          await upsertLocalRow(db, tableName, serverRow);
-        }
-      } else {
+      if (shouldApplyServerRow(localRow, String(serverRow.updated_at))) {
         await upsertLocalRow(db, tableName, serverRow);
       }
     }
   });
+
+  return new Set(rows.map((row) => String(row.id)));
+}
+
+async function purgeDeletedRows(tableName: TableName, serverIds: Set<string>): Promise<void> {
+  const db = await getDatabase();
+  const localRows = await db.getAllAsync<LocalRowState>(
+    `SELECT id, sync_status, updated_at FROM ${tableName}`
+  );
+  for (const id of staleLocalIds(localRows, serverIds)) {
+    try {
+      await db.runAsync(`DELETE FROM ${tableName} WHERE id = ?`, [id]);
+    } catch (error) {
+      // A pending local row still points here; keep it until that row syncs.
+      console.warn(`Kept ${tableName} ${id}:`, error instanceof Error ? error.message : error);
+    }
+  }
 }
 
 async function upsertLocalRow(
@@ -210,9 +215,7 @@ async function upsertLocalRow(
   tableName: TableName,
   serverRow: Record<string, unknown>
 ): Promise<void> {
-  const info = await db.getAllAsync<{ name: string }>(
-    `PRAGMA table_info(${tableName})`
-  );
+  const info = await db.getAllAsync<{ name: string }>(`PRAGMA table_info(${tableName})`);
   const columns = info.map((col) => col.name).filter((col) => col !== 'sync_status');
 
   const existing = await db.getFirstAsync<Record<string, unknown>>(
