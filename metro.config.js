@@ -5,6 +5,17 @@ const path = require('path');
 /** @type {import('expo/metro-config').MetroConfig} */
 const config = getDefaultConfig(__dirname);
 
+// expo-sqlite on web loads wa-sqlite.wasm and needs SharedArrayBuffer.
+// https://docs.expo.dev/versions/v57.0.0/sdk/sqlite/#web-setup
+config.resolver.assetExts.push('wasm');
+config.server.enhanceMiddleware = (middleware) => {
+  return (req, res, next) => {
+    res.setHeader('Cross-Origin-Embedder-Policy', 'credentialless');
+    res.setHeader('Cross-Origin-Opener-Policy', 'same-origin');
+    middleware(req, res, next);
+  };
+};
+
 const DATETIMEPICKER_SRC =
   `${path.sep}@react-native-community${path.sep}datetimepicker${path.sep}src${path.sep}`;
 
